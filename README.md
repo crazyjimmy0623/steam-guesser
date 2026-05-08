@@ -1,6 +1,6 @@
 # steam-guesser
 
-看遊戲畫面、影片、metadata,猜 Steam 評論數落在哪個區間。Cyberpunk 風格、5 分鐘衝高分。
+看遊戲畫面、影片、metadata,猜 Steam 評論數落在哪個區間。5 分鐘衝高分。
 
 ## Play
 
