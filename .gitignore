@@ -4,4 +4,6 @@ __pycache__/
 venv/
 history.json
 pool.json
+best.json
 .streamlit/
+.claude/

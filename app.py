@@ -15,8 +15,11 @@ CACHE_DIR = Path.home() / ".config" / "steam-guesser"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 HISTORY_FILE = CACHE_DIR / "history.json"
 POOL_FILE = CACHE_DIR / "pool.json"
+BEST_FILE = CACHE_DIR / "best.json"
 
 MIN_REVIEWS = 20
+MAX_REVIEWS = 30_000  # 太多評論的 3A 一看就知道,排除
+TIME_LIMIT = 300  # 計時模式秒數(5 分鐘)
 
 LANG_CODES = {"繁中": "tchinese", "EN": "english"}
 
@@ -24,15 +27,28 @@ BUCKETS = [
     (0,        100,            "< 100"),
     (100,      1_000,          "100–1K"),
     (1_000,    10_000,         "1K–10K"),
-    (10_000,   100_000,        "10K–100K"),
-    (100_000,  float("inf"),   "100K+"),
+    (10_000,   100_000,        "> 10K"),
 ]
-LETTERS = ["A", "B", "C", "D", "E"]
+LETTERS = ["A", "B", "C", "D"]
 
 SCORE_TABLE = {0: 100, 1: 50}
 
 T = {
     "繁中": {
+        "mode_casual":    "悠閒模式",
+        "mode_timed":     "計時挑戰",
+        "time_attack":    "5 分鐘衝高分",
+        "time_left":      "剩餘",
+        "ended_title":    "TIME UP",
+        "session_score":  "本場分數",
+        "session_picks":  "答題數",
+        "perfects":       "完美",
+        "near_hits":      "相鄰",
+        "misses":         "失準",
+        "personal_best":  "個人最佳",
+        "new_record":     "新紀錄!",
+        "play_again":     "再玩一次",
+        "view_results":   "結算",
         "title":          "STEAM 評論猜猜看",
         "tagline":        "看畫面，猜這款遊戲的評論落在哪個區間",
         "rules":          "完美 100　·　相鄰 50",
@@ -75,6 +91,20 @@ T = {
         "tbl_score":      "分數",
     },
     "EN": {
+        "mode_casual":    "CASUAL",
+        "mode_timed":     "TIME ATTACK",
+        "time_attack":    "5min — go for the high score",
+        "time_left":      "TIME",
+        "ended_title":    "TIME UP",
+        "session_score":  "SESSION_SCORE",
+        "session_picks":  "ANSWERED",
+        "perfects":       "PERFECT",
+        "near_hits":      "NEAR",
+        "misses":         "MISS",
+        "personal_best":  "PERSONAL_BEST",
+        "new_record":     "NEW RECORD!",
+        "play_again":     "PLAY AGAIN",
+        "view_results":   "VIEW RESULTS",
         "title":          "STEAM REVIEW GUESSER",
         "tagline":        "Look at the visuals — guess the review bucket",
         "rules":          "PERFECT 100　·　ADJACENT 50",
@@ -121,23 +151,65 @@ T = {
 
 # ---------- 資料 ----------
 
+POOL_PAGES = 5  # 5 頁 ≈ 5000 款,涵蓋熱門到中後段小品
+
+
+def _load_cached_pool() -> list[dict] | None:
+    """讀現有 pool.json,任何能用的都回傳,不行就 None"""
+    if not POOL_FILE.exists():
+        return None
+    try:
+        cached = json.loads(POOL_FILE.read_text(encoding="utf-8"))
+        if cached and isinstance(cached, list):
+            return cached
+    except Exception:
+        pass
+    return None
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def load_pool() -> list[dict]:
-    if POOL_FILE.exists():
-        return json.loads(POOL_FILE.read_text(encoding="utf-8"))
-    r = requests.get(
-        "https://steamspy.com/api.php",
-        params={"request": "all", "page": 0},
-        timeout=30,
-    )
-    r.raise_for_status()
-    pool = [
-        {"appid": int(k), "name": v.get("name", "")}
-        for k, v in r.json().items()
-        if v.get("name")
-    ]
-    POOL_FILE.write_text(json.dumps(pool, ensure_ascii=False), encoding="utf-8")
-    return pool
+    cached = _load_cached_pool()
+    # 已有夠大的新格式 cache 就直接用
+    if cached and "reviews" in cached[0] and len(cached) >= 4000:
+        return cached
+
+    # 重抓多頁
+    pool: list[dict] = []
+    seen_ids: set[int] = set()
+    for page in range(POOL_PAGES):
+        try:
+            r = requests.get(
+                "https://steamspy.com/api.php",
+                params={"request": "all", "page": page},
+                timeout=20,
+            )
+            if r.status_code != 200:
+                continue
+            for k, v in r.json().items():
+                if not v.get("name"):
+                    continue
+                appid = int(k)
+                if appid in seen_ids:
+                    continue
+                seen_ids.add(appid)
+                pool.append({
+                    "appid": appid,
+                    "name": v["name"],
+                    "reviews": int(v.get("positive", 0)) + int(v.get("negative", 0)),
+                })
+            time.sleep(0.3)
+        except Exception:
+            continue
+
+    if pool:
+        POOL_FILE.write_text(json.dumps(pool, ensure_ascii=False), encoding="utf-8")
+        return pool
+
+    # 重抓全失敗 → 用任何舊 cache 撐住,寧可玩到熱門也不要無法開始
+    if cached:
+        return cached
+    return []
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -168,14 +240,37 @@ def fetch_game(appid: int, lang: str) -> tuple[dict | None, int | None]:
 
 
 def find_target(pool: list[dict], exclude: set[int], lang: str) -> dict | None:
-    for _ in range(12):
-        pick = random.choice(pool)
-        if pick["appid"] in exclude:
+    # 把 pool 按桶分群(用 steamspy 評論數預估),然後隨機選桶 → 桶內隨機抽,
+    # 確保每桶機率相等,避免熱門池讓 C/D 桶遊戲淹沒 A/B
+    by_bucket: list[list[dict]] = [[] for _ in BUCKETS]
+    for p in pool:
+        n = p.get("reviews", 0)
+        if MIN_REVIEWS <= n <= MAX_REVIEWS and p["appid"] not in exclude:
+            by_bucket[bucket_of(n)].append(p)
+
+    # fallback:舊 cache 沒 reviews 欄位 → 退回平攤抽
+    if all(not b for b in by_bucket):
+        flat = [p for p in pool if p["appid"] not in exclude]
+        random.shuffle(flat)
+        for pick in flat[:25]:
+            details, reviews = fetch_game(pick["appid"], lang)
+            if details and reviews and MIN_REVIEWS <= reviews <= MAX_REVIEWS:
+                return {"appid": pick["appid"], "reviews": reviews}
+            time.sleep(0.2)
+        return None
+
+    # 隨機決定桶順序;每桶試最多 8 次再換下一桶
+    bucket_order = random.sample(range(len(BUCKETS)), len(BUCKETS))
+    for b in bucket_order:
+        candidates = by_bucket[b]
+        if not candidates:
             continue
-        details, reviews = fetch_game(pick["appid"], lang)
-        if details and reviews and reviews >= MIN_REVIEWS:
-            return {"appid": pick["appid"], "reviews": reviews}
-        time.sleep(0.3)
+        random.shuffle(candidates)
+        for pick in candidates[:8]:
+            details, reviews = fetch_game(pick["appid"], lang)
+            if details and reviews and MIN_REVIEWS <= reviews <= MAX_REVIEWS:
+                return {"appid": pick["appid"], "reviews": reviews}
+            time.sleep(0.2)
     return None
 
 
@@ -202,6 +297,22 @@ def bucket_of(n: int) -> int:
 
 def score_for(picked: int, actual: int) -> int:
     return SCORE_TABLE.get(abs(picked - actual), 0)
+
+
+def load_best() -> int:
+    if not BEST_FILE.exists():
+        return 0
+    try:
+        return int(json.loads(BEST_FILE.read_text(encoding="utf-8")).get("best", 0))
+    except Exception:
+        return 0
+
+
+def save_best(score: int) -> None:
+    try:
+        BEST_FILE.write_text(json.dumps({"best": int(score)}), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def load_history() -> list[dict]:
@@ -259,7 +370,7 @@ st.set_page_config(page_title="Steam 評論猜猜看", page_icon="◉", layout="
 if "init" not in st.session_state:
     h0 = load_history()
     st.session_state.init = True
-    st.session_state.lang = "繁中"
+    st.session_state.lang = "EN"
     st.session_state.phase = "idle"
     st.session_state.game = None
     st.session_state.picked = None
@@ -267,6 +378,14 @@ if "init" not in st.session_state:
     st.session_state.seen = set()
     st.session_state.streak = trailing_streak(h0)
     st.session_state.best = best_streak(h0)
+    # time-attack mode state(永遠開,強制計時)
+    st.session_state.session_start_time = 0.0
+    st.session_state.session_score = 0
+    st.session_state.session_picks = 0
+    st.session_state.session_perfects = 0
+    st.session_state.session_nears = 0
+    st.session_state.session_misses = 0
+    st.session_state.session_best = load_best()
 
 
 # ---------- CSS（語系決定深淺） ----------
@@ -423,10 +542,161 @@ CSS = f"""
   @keyframes caret-blink {{ 50% {{ opacity: 0; }} }}
 
   /* fade-in */
-  .fade-in {{ animation: fadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  .fade-in {{ animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }}
   @keyframes fadeUp {{
-    from {{ opacity: 0; transform: translateY(8px); }}
+    from {{ opacity: 0; transform: translateY(16px); filter: blur(4px); }}
+    to   {{ opacity: 1; transform: translateY(0);    filter: blur(0); }}
+  }}
+
+  /* typewriter (inline span) */
+  .tw {{
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    width: 0;
+    vertical-align: bottom;
+    border-right: 2px solid currentColor;
+    animation: tw-go 0.7s steps(24) forwards, tw-caret 0.7s step-end 5;
+  }}
+  @keyframes tw-go    {{ to {{ width: 100%; }} }}
+  @keyframes tw-caret {{ 50% {{ border-color: transparent; }} }}
+
+  /* full-screen impact flash on reveal */
+  .impact-flash {{
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0;
+    animation: impact-pulse 0.65s ease-out forwards;
+  }}
+  @keyframes impact-pulse {{
+    0%   {{ opacity: 0; }}
+    18%  {{ opacity: 0.55; }}
+    100% {{ opacity: 0; }}
+  }}
+  .impact-100 {{ background: radial-gradient(ellipse at center, rgba(76,175,80,0.75) 0%, rgba(76,175,80,0) 65%); }}
+  .impact-50  {{ background: radial-gradient(ellipse at center, rgba(255,200,61,0.65) 0%, rgba(255,200,61,0) 65%); }}
+  .impact-0   {{ background: radial-gradient(ellipse at center, rgba(211,47,47,0.65) 0%, rgba(211,47,47,0) 65%); }}
+
+  /* entrance animations (apply to existing elements without overriding their other styling) */
+  .prompt {{ animation: slideInLeft 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  @keyframes slideInLeft {{
+    from {{ opacity: 0; transform: translateX(-12px); }}
+    to   {{ opacity: 1; transform: translateX(0); }}
+  }}
+  /* clip-path typewriter for prompt accent (works with any text length) */
+  .prompt .accent {{
+    display: inline-block;
+    white-space: nowrap;
+    clip-path: inset(0 100% 0 0);
+    animation: tw-clip 0.55s steps(14) 0.1s forwards;
+  }}
+  @keyframes tw-clip {{
+    from {{ clip-path: inset(0 100% 0 0); }}
+    to   {{ clip-path: inset(0 0     0 0); }}
+  }}
+
+  /* panel entry */
+  .panel-glow {{ animation: panelIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  @keyframes panelIn {{
+    from {{ opacity: 0; transform: translateY(20px); filter: blur(6px); }}
+    to   {{ opacity: 1; transform: translateY(0);    filter: blur(0); }}
+  }}
+
+  /* metadata text staggered entry — start AFTER panel settles */
+  .target-title {{ animation: fadeUp 0.6s 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  .target-desc  {{ animation: fadeUp 0.6s 0.50s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  .meta .row    {{ animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  .meta .row:nth-child(1) {{ animation-delay: 0.65s; }}
+  .meta .row:nth-child(2) {{ animation-delay: 0.78s; }}
+  .meta .row:nth-child(3) {{ animation-delay: 0.91s; }}
+  .meta .row:nth-child(4) {{ animation-delay: 1.04s; }}
+
+  /* horizontal-row buttons (bucket strip): staggered fade-up */
+  [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button {{
+    animation: btnIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }}
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(1) [data-testid="stButton"] > button {{ animation-delay: 0.05s; }}
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(2) [data-testid="stButton"] > button {{ animation-delay: 0.12s; }}
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(3) [data-testid="stButton"] > button {{ animation-delay: 0.19s; }}
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(4) [data-testid="stButton"] > button {{ animation-delay: 0.26s; }}
+  [data-testid="stHorizontalBlock"] > [data-testid="column"]:nth-child(5) [data-testid="stButton"] > button {{ animation-delay: 0.33s; }}
+  @keyframes btnIn {{
+    from {{ opacity: 0; transform: translateY(12px); }}
     to   {{ opacity: 1; transform: translateY(0); }}
+  }}
+
+  /* primary button (start / next) — entrance + strong idle CTA pulse to draw the eye */
+  div[data-testid="stButton"] > button[kind="primary"] {{
+    animation: btnIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
+               ctaPulse 1.6s ease-in-out 0.5s infinite;
+  }}
+  @keyframes ctaPulse {{
+    0%, 100% {{
+      box-shadow: 0 0 18px rgba(76,175,80,0.35),
+                  0 0 0   rgba(76,175,80,0),
+                  inset 0 0 12px rgba(76,175,80,0.15);
+      transform: scale(1);
+      filter: brightness(1);
+      border-color: var(--accent);
+    }}
+    50%      {{
+      box-shadow: 0 0 50px rgba(76,175,80,0.95),
+                  0 0 110px rgba(76,175,80,0.45),
+                  inset 0 0 36px rgba(76,175,80,0.55);
+      transform: scale(1.018);
+      filter: brightness(1.2);
+      border-color: #6fff6f;
+    }}
+  }}
+
+  /* expanding ring around primary button */
+  div[data-testid="stButton"] > button[kind="primary"]::after {{
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--accent);
+    pointer-events: none;
+    animation: ctaRing 1.6s ease-out 0.5s infinite;
+  }}
+  @keyframes ctaRing {{
+    0%   {{ opacity: 0.7;  transform: scale(1);    border-width: 2px; }}
+    80%  {{ opacity: 0.05; transform: scale(1.04); border-width: 1px; }}
+    100% {{ opacity: 0;    transform: scale(1.05); border-width: 1px; }}
+  }}
+
+  div[data-testid="stButton"] > button[kind="primary"]:hover:not(:disabled) {{
+    animation: none;
+    transform: scale(1.01);
+    box-shadow: 0 0 60px var(--accent-glow), 0 0 120px rgba(76,175,80,0.5), inset 0 0 28px rgba(76,175,80,0.4);
+    filter: brightness(1.1);
+  }}
+  div[data-testid="stButton"] > button[kind="primary"]:hover:not(:disabled)::after {{ animation: none; opacity: 0; }}
+
+  div[data-testid="stButton"] > button[kind="primary"]:active:not(:disabled) {{
+    animation: none;
+    transform: scale(0.96);
+    box-shadow: 0 0 80px var(--accent-glow), inset 0 0 40px rgba(76,175,80,0.7);
+    background: linear-gradient(90deg, #4a9a4a, #1f6a1f) !important;
+    filter: brightness(1.3);
+  }}
+
+  /* click feedback — flash → dim "processing" state until page reruns
+     (NO pointer-events:none — that would swallow the mouseup/click events) */
+  div[data-testid="stButton"] > button[kind="primary"].cta-clicked,
+  div[data-testid="stButton"] > button.cta-clicked {{
+    animation: clickFx 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  }}
+  @keyframes clickFx {{
+    0%   {{ transform: scale(0.93); filter: brightness(1.8); box-shadow: 0 0 120px rgba(76,175,80,1), inset 0 0 60px rgba(120,255,120,0.9); border-color: #ffffff; color: #ffffff; }}
+    25%  {{ transform: scale(1.025); filter: brightness(1.4); box-shadow: 0 0 80px var(--accent-glow), inset 0 0 40px rgba(76,175,80,0.6); }}
+    100% {{ transform: scale(0.985); filter: brightness(0.5) saturate(0.6); box-shadow: 0 0 10px rgba(76,175,80,0.25), inset 0 0 18px rgba(0,0,0,0.55); border-color: rgba(76,175,80,0.3); color: rgba(76,175,80,0.55); opacity: 0.55; }}
+  }}
+
+  /* chip strip entry */
+  @keyframes chipIn {{
+    from {{ opacity: 0; transform: translateY(8px) scale(0.85); }}
+    to   {{ opacity: 1; transform: translateY(0)  scale(1); }}
   }}
 
   /* panel */
@@ -446,8 +716,8 @@ CSS = f"""
     filter: brightness(0.9) contrast(1.05);
   }}
   @keyframes imgIn {{
-    from {{ opacity: 0; filter: blur(10px) brightness(0.5); transform: scale(1.02); }}
-    to   {{ opacity: 1; filter: blur(0)   brightness(0.9);  transform: scale(1); }}
+    from {{ opacity: 0; filter: blur(10px) brightness(0.5); transform: translateY(20px) scale(1.02); }}
+    to   {{ opacity: 1; filter: blur(0)   brightness(0.9);  transform: translateY(0)    scale(1); }}
   }}
 
   /* metadata */
@@ -535,23 +805,34 @@ CSS = f"""
   }}
 
   /* radio (lang) */
-  div[data-testid="stRadio"] > div {{ background: transparent; gap: 4px; }}
+  div[data-testid="stRadio"] > div {{ background: transparent; gap: 8px; }}
   div[data-testid="stRadio"] label {{
     background: #0a0a0a !important;
     border: 1px solid var(--border-2) !important;
     border-radius: 0 !important;
-    padding: 4px 12px !important;
-    font-size: 12px !important;
+    padding: 10px 22px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
     cursor: pointer;
-    transition: all 0.18s;
-    letter-spacing: 1px;
+    transition: all 0.2s;
+    letter-spacing: 2px;
+    opacity: 0.45;
+    filter: grayscale(0.5);
   }}
-  div[data-testid="stRadio"] label:hover {{ background: #1a1a1a !important; }}
+  div[data-testid="stRadio"] label:hover {{
+    background: #1a1a1a !important;
+    opacity: 0.85;
+    filter: grayscale(0.2);
+  }}
   div[data-testid="stRadio"] label:has(input:checked) {{
-    background: linear-gradient(90deg, #265a26, #0e2a0e) !important;
-    border-color: var(--accent) !important;
-    color: #fff !important;
-    box-shadow: 0 0 12px var(--accent-glow);
+    background: linear-gradient(90deg, #4caf50, #1f6a1f) !important;
+    border-color: #6fff6f !important;
+    border-width: 2px !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 28px var(--accent-glow), inset 0 0 18px rgba(255,255,255,0.15);
+    text-shadow: 0 0 10px rgba(255,255,255,0.7);
+    opacity: 1;
+    filter: none;
   }}
 
   /* typewriter */
@@ -587,6 +868,31 @@ CSS = f"""
     40%           {{ transform: translateY(-9px); opacity: 1; }}
   }}
 
+  /* indeterminate progress bar */
+  .progress-bar {{
+    position: relative;
+    width: 100%;
+    max-width: 320px;
+    height: 3px;
+    background: rgba(76,175,80,0.12);
+    border: 1px solid rgba(76,175,80,0.25);
+    overflow: hidden;
+    margin: 18px auto 0;
+  }}
+  .progress-bar::after {{
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: -40%; width: 40%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    box-shadow: 0 0 12px var(--accent-glow);
+    animation: prog-slide 1.3s ease-in-out infinite;
+  }}
+  @keyframes prog-slide {{
+    0%   {{ left: -40%; }}
+    100% {{ left: 100%; }}
+  }}
+
   /* score reveal */
   .score {{
     text-align: center;
@@ -603,12 +909,122 @@ CSS = f"""
   }}
   .score .num {{ font-size: 70px; font-weight: 900; line-height: 1; letter-spacing: -1px; font-feature-settings: "tnum"; }}
   .score .lbl {{ font-size: 12px; letter-spacing: 3px; margin-top: 6px; font-weight: 700; }}
-  .score-100 .num {{ color: var(--gold);  text-shadow: 0 0 28px rgba(255,200,61,0.7); }}
-  .score-100 .lbl {{ color: var(--gold); }}
-  .score-50  .num {{ color: var(--accent); text-shadow: 0 0 22px var(--accent-glow); }}
-  .score-50  .lbl {{ color: var(--accent); }}
+  .score-100 .num {{ color: var(--accent); text-shadow: 0 0 28px var(--accent-glow); }}
+  .score-100 .lbl {{ color: var(--accent); }}
+  .score-50  .num {{ color: var(--gold);  text-shadow: 0 0 28px rgba(255,200,61,0.7); }}
+  .score-50  .lbl {{ color: var(--gold); }}
   .score-0   .num {{ color: var(--red);   text-shadow: 0 0 22px rgba(211,47,47,0.55); transform: skewX(-3deg); }}
   .score-0   .lbl {{ color: var(--red); }}
+
+  /* ended phase (time-attack 結算) */
+  .ended-wrap {{
+    text-align: center;
+    padding: 32px 18px 24px;
+    border: 1px solid var(--accent);
+    background: linear-gradient(180deg, rgba(0,40,0,0.3), rgba(0,15,0,0.3));
+    box-shadow: 0 0 40px var(--accent-glow), inset 0 0 40px rgba(76,175,80,0.15);
+    margin: 18px 0;
+  }}
+  .ended-tag {{
+    font-size: 16px;
+    letter-spacing: 8px;
+    color: var(--red);
+    text-shadow: 0 0 14px rgba(211,47,47,0.85);
+    font-weight: 900;
+    margin-bottom: 8px;
+    animation: blink 0.5s steps(2) 4;
+  }}
+  @keyframes blink {{ 50% {{ opacity: 0.3; }} }}
+  .ended-record {{
+    color: var(--gold);
+    letter-spacing: 6px;
+    font-size: 14px;
+    font-weight: 800;
+    text-shadow: 0 0 14px rgba(255,200,61,0.9);
+    margin: 6px 0;
+    animation: recordPulse 1s ease-in-out infinite;
+  }}
+  @keyframes recordPulse {{
+    0%, 100% {{ opacity: 0.85; transform: scale(1); }}
+    50%      {{ opacity: 1;    transform: scale(1.05); }}
+  }}
+  .ended-score-num {{
+    font-size: 96px; font-weight: 900;
+    color: var(--accent);
+    text-shadow: 0 0 36px var(--accent-glow);
+    line-height: 1;
+    margin: 12px 0 4px;
+    font-feature-settings: "tnum";
+  }}
+  .ended-score-lbl {{
+    color: var(--dim);
+    letter-spacing: 4px;
+    font-size: 12px;
+    font-weight: 700;
+  }}
+
+  /* verdict banner */
+  .verdict {{
+    margin: 0 0 14px;
+    padding: 14px 18px;
+    border: 2px solid;
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+    letter-spacing: 5px;
+    font-weight: 900;
+    font-size: 22px;
+    font-family: 'JetBrains Mono','Courier New',monospace;
+  }}
+  .verdict::before {{
+    content: '';
+    position: absolute; left: -35%; top: 0; bottom: 0; width: 35%;
+    background: linear-gradient(90deg, transparent, currentColor, transparent);
+    opacity: 0.32;
+    animation: v-scan 1.1s ease-out 0.25s both;
+    pointer-events: none;
+  }}
+  @keyframes v-in {{
+    0%   {{ opacity: 0; transform: translateY(-12px) scale(0.94); filter: blur(6px); }}
+    100% {{ opacity: 1; transform: translateY(0)     scale(1);    filter: blur(0); }}
+  }}
+  @keyframes v-scan {{ to {{ left: 100%; }} }}
+  .verdict-100 {{
+    border-color: var(--accent);
+    color: var(--accent);
+    background: linear-gradient(90deg, rgba(0,60,0,0.55), rgba(0,30,0,0.5));
+    text-shadow: 0 0 14px var(--accent-glow);
+    animation: v-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+               v-pulse-g 1.4s ease-in-out 0.5s infinite;
+  }}
+  .verdict-50 {{
+    border-color: var(--gold);
+    color: var(--gold);
+    background: linear-gradient(90deg, rgba(60,50,0,0.55), rgba(30,25,0,0.5));
+    text-shadow: 0 0 14px rgba(255,200,61,0.85);
+    box-shadow: 0 0 26px rgba(255,200,61,0.4), inset 0 0 20px rgba(255,200,61,0.18);
+    animation: v-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }}
+  .verdict-0 {{
+    border-color: var(--red);
+    color: var(--red);
+    background: linear-gradient(90deg, rgba(60,0,0,0.55), rgba(30,0,0,0.5));
+    text-shadow: 0 0 14px rgba(211,47,47,0.75);
+    box-shadow: 0 0 26px rgba(211,47,47,0.5), inset 0 0 20px rgba(211,47,47,0.18);
+    animation: v-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+               v-glitch 0.34s steps(2) 0.4s 3;
+  }}
+  @keyframes v-pulse-g {{
+    0%, 100% {{ box-shadow: 0 0 22px rgba(76,175,80,0.4),  inset 0 0 18px rgba(76,175,80,0.15); }}
+    50%      {{ box-shadow: 0 0 40px rgba(76,175,80,0.75), inset 0 0 32px rgba(76,175,80,0.3); }}
+  }}
+  @keyframes v-glitch {{
+    0%   {{ transform: translate(0); }}
+    25%  {{ transform: translate(-3px, 1px); }}
+    50%  {{ transform: translate(2px, -1px); }}
+    75%  {{ transform: translate(-1px, 2px); }}
+    100% {{ transform: translate(0); }}
+  }}
 
   /* log lines */
   .log {{
@@ -636,7 +1052,7 @@ CSS = f"""
   .log.danger  {{ border-color: var(--red);    color: #ff8888; }}
 
   /* bucket strip (5 cells) */
-  .bk-strip {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 12px 0; }}
+  .bk-strip {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0; }}
   .chip {{
     text-align: center;
     padding: 10px 0;
@@ -645,29 +1061,33 @@ CSS = f"""
     color: var(--dim);
     font-size: 12px; font-weight: 700;
     transition: all 0.3s ease;
+    animation: chipIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   }}
   .chip-correct {{
     background: linear-gradient(135deg, #1b3a1b, #0d2a0d);
     border-color: var(--accent);
     color: #aef0ae;
     box-shadow: 0 0 22px var(--accent-glow);
-    animation: glow-g 1.6s ease-in-out infinite;
+    animation: chipIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both,
+               glow-g 1.6s ease-in-out 0.5s infinite;
   }}
   .chip-perfect {{
-    background: linear-gradient(135deg, #3a3216, #2a240a);
-    border-color: var(--gold);
+    background: linear-gradient(135deg, #1f4a1f, #102a10);
+    border-color: var(--accent);
     color: #fff;
-    box-shadow: 0 0 26px rgba(255,200,61,0.6);
-    animation: glow-y 1.4s ease-in-out infinite;
+    box-shadow: 0 0 28px var(--accent-glow);
+    animation: chipIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both,
+               glow-y 1.4s ease-in-out 0.5s infinite;
   }}
   .chip-wrong {{
     background: linear-gradient(135deg, #3a1616, #2a0a0a);
     border-color: var(--red);
     color: #ffaaaa;
-    animation: shake 0.5s;
+    animation: chipIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both,
+               shake 0.5s 0.45s;
   }}
   @keyframes glow-g {{ 0%,100% {{ box-shadow: 0 0 16px var(--accent-glow); }} 50% {{ box-shadow: 0 0 28px var(--accent-glow); }} }}
-  @keyframes glow-y {{ 0%,100% {{ box-shadow: 0 0 22px rgba(255,200,61,0.5); transform: scale(1); }} 50% {{ box-shadow: 0 0 36px rgba(255,200,61,0.95); transform: scale(1.03); }} }}
+  @keyframes glow-y {{ 0%,100% {{ box-shadow: 0 0 22px var(--accent-glow); transform: scale(1); }} 50% {{ box-shadow: 0 0 40px rgba(76,175,80,0.95); transform: scale(1.04); }} }}
   @keyframes shake  {{ 0%,100% {{ transform: translateX(0); }} 30% {{ transform: translateX(-3px); }} 70% {{ transform: translateX(3px); }} }}
 
   /* hero (idle) */
@@ -742,422 +1162,7 @@ lang_code = LANG_CODES[st.session_state.lang]
 t = T[st.session_state.lang]
 
 
-def render_loader_html(line1: str, line2: str) -> str:
-    return f"""
-<div class="loader fade-in">
-  <div class="row"><span class="loader-line l1">&gt; {line1}</span></div>
-  <div class="row"><span class="loader-line l2">&gt; {line2}</span></div>
-  <div class="dots"><span></span><span></span><span></span></div>
-</div>
-"""
-
-
-# ---------- pool ----------
-
-try:
-    pool = load_pool()
-except Exception as e:
-    st.error(f"題庫載入失敗：{e}")
-    st.stop()
-
-
-# ---------- IDLE ----------
-
-if st.session_state.phase == "idle":
-    st.markdown(
-        f"""
-<div class="hero fade-in">
-  <div class="icon">◉</div>
-  <h2>&gt; {t['ready']}</h2>
-  <p>{t['intro']}</p>
-  <div class="rules">{t['rules']}</div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-    c1, c2, c3 = st.columns([1, 1, 1])
-    with c2:
-        if st.button(f"[ {t['start']} ]", use_container_width=True, type="primary", key="btn_start"):
-            ph = st.empty()
-            ph.markdown(render_loader_html(t["load1"], t["load2"]), unsafe_allow_html=True)
-            g = find_target(pool, st.session_state.seen, lang_code)
-            ph.empty()
-            if g:
-                st.session_state.game = g
-                st.session_state.seen.add(g["appid"])
-                st.session_state.phase = "playing"
-                st.session_state.picked = None
-                st.session_state.celebrated = False
-            else:
-                st.error(t["rate_limit"])
-            st.rerun()
-
-    if hist:
-        with st.expander(t["history"], expanded=False):
-            recent = list(reversed(hist[-10:]))
-            st.dataframe(
-                [
-                    {
-                        t["tbl_target"]:  h.get("name", ""),
-                        t["tbl_pick"]:    f"[{LETTERS[h['picked']]}] {BUCKETS[h['picked']][2]}",
-                        t["tbl_actual"]:  f"[{LETTERS[h['actual_bucket']]}] {BUCKETS[h['actual_bucket']][2]}",
-                        t["tbl_reviews"]: f"{h.get('actual_reviews', 0):,}",
-                        t["tbl_score"]:   h["score"],
-                    }
-                    for h in recent
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    # idle 也要有音訊控制（用戶可在這裡先開好音效）
-    components.html(
-        AUDIO_HTML := r"""
-<style>
-  body { margin: 0; background: transparent; font-family: 'JetBrains Mono','Courier New',monospace; }
-  #aw {
-    display: flex; gap: 6px; align-items: center;
-    padding: 6px 10px;
-    background: rgba(8,8,10,0.85);
-    border: 1px solid #2a2a30;
-    border-left: 3px solid #4caf50;
-    color: #4caf50;
-    font-size: 11px;
-    letter-spacing: 1px;
-    width: max-content;
-  }
-  #aw button {
-    background: #0a0a0a;
-    border: 1px solid #4caf50;
-    color: #4caf50;
-    padding: 4px 10px;
-    font-family: inherit;
-    font-size: 11px;
-    cursor: pointer;
-    letter-spacing: 1px;
-    text-shadow: 0 0 6px rgba(76,175,80,0.5);
-  }
-  #aw button:hover { background: #1a3a1a; color: #fff; }
-  #aw button:disabled { opacity: 0.4; cursor: not-allowed; }
-  #vol { width: 70px; }
-</style>
-<div id="aw">
-  <span>BGM</span>
-  <button id="b">○ OFF</button>
-  <input id="vol" type="range" min="0" max="100" value="40" />
-</div>
-<script>
-let ctx=null, master=null, started=false, on=false;
-const b = document.getElementById('b');
-const vol = document.getElementById('vol');
-
-function buildDrone() {
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
-  master = ctx.createGain();
-  master.gain.value = 0;
-  master.connect(ctx.destination);
-
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 220;
-  filter.Q.value = 0.6;
-  filter.connect(master);
-
-  // multiple low oscillators for a thick drone
-  function osc(type, freq, gain) {
-    const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
-    const g = ctx.createGain(); g.gain.value = gain;
-    o.connect(g); g.connect(filter);
-    o.start();
-    return o;
-  }
-  osc('sine', 55, 1.0);
-  osc('sine', 73.4, 0.7);  // perfect fifth-ish
-  osc('sawtooth', 27.5, 0.25);
-  osc('sine', 110, 0.35);
-  // slight detune wobble
-  const det = osc('sine', 56.2, 0.4);
-
-  // breathing LFO
-  const lfo = ctx.createOscillator();
-  lfo.type = 'sine';
-  lfo.frequency.value = 0.13;
-  const lfoG = ctx.createGain();
-  lfoG.gain.value = 0.025;
-  lfo.connect(lfoG); lfoG.connect(master.gain);
-  lfo.start();
-
-  // very slow filter sweep
-  const sw = ctx.createOscillator();
-  sw.type = 'sine'; sw.frequency.value = 0.05;
-  const swg = ctx.createGain(); swg.gain.value = 60;
-  sw.connect(swg); swg.connect(filter.frequency);
-  sw.start();
-
-  // occasional crackles via noise + bandpass for that horror tape feel
-  const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i=0; i<data.length; i++) data[i] = (Math.random()*2-1) * 0.05;
-  const noise = ctx.createBufferSource();
-  noise.buffer = buf; noise.loop = true;
-  const noiseG = ctx.createGain(); noiseG.gain.value = 0.06;
-  const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value = 800; bp.Q.value = 1.5;
-  noise.connect(bp); bp.connect(noiseG); noiseG.connect(master);
-  noise.start();
-}
-
-function setOn(v) {
-  if (!started) return;
-  const tgt = v ? (parseInt(vol.value)/100) * 0.12 : 0;
-  master.gain.cancelScheduledValues(ctx.currentTime);
-  master.gain.linearRampToValueAtTime(tgt, ctx.currentTime + (v ? 1.8 : 0.6));
-  on = v;
-  b.textContent = v ? '◉ ON' : '○ OFF';
-  b.style.background = v ? '#1a3a1a' : '#0a0a0a';
-  b.style.color = v ? '#fff' : '#4caf50';
-}
-
-b.addEventListener('click', () => {
-  if (!started) { buildDrone(); started = true; setOn(true); return; }
-  setOn(!on);
-});
-vol.addEventListener('input', () => {
-  if (started && on) {
-    const tgt = (parseInt(vol.value)/100) * 0.12;
-    master.gain.cancelScheduledValues(ctx.currentTime);
-    master.gain.linearRampToValueAtTime(tgt, ctx.currentTime + 0.2);
-  }
-});
-</script>
-""",
-        height=42,
-    )
-    st.stop()
-
-
-# ---------- 載入當前遊戲 ----------
-
-g = st.session_state.game
-details, _ = fetch_game(g["appid"], lang_code)
-if details is None:
-    st.error(t["rate_limit"])
-    st.stop()
-actual_idx = bucket_of(g["reviews"])
-
-
-# ---------- 兩欄 ----------
-
-L, R = st.columns([1.45, 1])
-
-with L:
-    st.markdown(
-        f'<div class="prompt"><span class="arrow">&gt;</span><span class="accent">{t["scanning"]}</span></div>',
-        unsafe_allow_html=True,
-    )
-
-    video_url = hero_video_url(details)
-    if video_url:
-        st.video(video_url, autoplay=True, loop=True, muted=True)
-    elif details.get("header_image"):
-        st.image(details["header_image"], use_container_width=True)
-
-    shots = details.get("screenshots") or []
-    if shots:
-        cols = st.columns(min(3, len(shots)))
-        for i, s in enumerate(shots[:3]):
-            cols[i].image(s["path_thumbnail"], use_container_width=True)
-
-    title = details.get("name", "—")
-    desc = details.get("short_description", "") or "—"
-    genres = " · ".join(x["description"] for x in details.get("genres", [])[:4]) or "—"
-    release = details.get("release_date", {}).get("date", "—")
-    if details.get("price_overview"):
-        price = details["price_overview"]["final_formatted"]
-    elif details.get("is_free"):
-        price = t["free"]
-    else:
-        price = "—"
-    devs = ", ".join(details.get("developers", [])[:2]) or "—"
-
-    st.markdown(
-        f"""
-<div class="panel panel-glow fade-in" style="margin-top:14px;">
-  <div class="prompt" style="margin-top:0; margin-bottom:10px;">
-    <span class="arrow">&gt;</span><span class="accent">{t['metadata']}</span>
-  </div>
-  <div class="target-title">{title}</div>
-  <div class="target-desc">{desc}</div>
-  <div class="meta">
-    <div class="row"><span class="k">{t['genre']}</span><span class="sep">::</span><span class="v">{genres}</span></div>
-    <div class="row"><span class="k">{t['release']}</span><span class="sep">::</span><span class="v">{release}</span></div>
-    <div class="row"><span class="k">{t['price']}</span><span class="sep">::</span><span class="v">{price}</span></div>
-    <div class="row"><span class="k">{t['dev']}</span><span class="sep">::</span><span class="v">{devs}</span></div>
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-with R:
-    if st.session_state.phase == "playing":
-        st.markdown(
-            f"""
-<div class="prompt">
-  <span class="arrow">&gt;</span><span class="accent">QUERY</span>
-  <span style="color:var(--dim); margin-left:6px;">{t['query']}</span><span class="caret"></span>
-</div>
-<div style="color: var(--dim); font-size:12px; letter-spacing:1px; margin: 14px 0 10px;">
-  {t['select_prompt']}
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-        for i, (lo, hi, label) in enumerate(BUCKETS):
-            if st.button(f"[ {LETTERS[i]} ]    {label}", key=f"bk_{i}", use_container_width=True):
-                s = score_for(i, actual_idx)
-                new_streak = st.session_state.streak + 1 if s >= 50 else 0
-                st.session_state.streak = new_streak
-                st.session_state.best = max(st.session_state.best, new_streak)
-                st.session_state.picked = i
-                st.session_state.phase = "computing"
-                st.session_state.celebrated = False
-                save_history(
-                    {
-                        "ts": int(time.time()),
-                        "appid": g["appid"],
-                        "name": details.get("name"),
-                        "picked": i,
-                        "actual_bucket": actual_idx,
-                        "actual_reviews": g["reviews"],
-                        "score": s,
-                    }
-                )
-                st.rerun()
-
-    elif st.session_state.phase == "computing":
-        st.markdown(render_loader_html(t["comp1"], t["comp2"]), unsafe_allow_html=True)
-        time.sleep(1.4)
-        st.session_state.phase = "revealed"
-        st.rerun()
-
-    elif st.session_state.phase == "revealed":
-        picked = st.session_state.picked
-        s = score_for(picked, actual_idx)
-        label_map = {
-            100: t["lbl_perfect"],
-            50:  t["lbl_adjacent"],
-            0:   t["lbl_miss"],
-        }
-
-        st.markdown(
-            f"""
-<div class="prompt"><span class="arrow">&gt;</span><span class="accent">{t['analysis_done']}</span></div>
-<div class="score score-{s}">
-  <div class="num">+{s}</div>
-  <div class="lbl">{label_map[s]}</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-        log_class = {100: "gold", 50: "success", 0: "danger"}[s]
-        delta = picked - actual_idx
-        st.markdown(
-            f"""
-<div class="log steam"><span class="k">{t['actual']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{g['reviews']:,}</span></div>
-<div class="log"><span class="k">{t['correct']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">[{LETTERS[actual_idx]}] {BUCKETS[actual_idx][2]}</span></div>
-<div class="log"><span class="k">{t['your_pick']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">[{LETTERS[picked]}] {BUCKETS[picked][2]}</span></div>
-<div class="log {log_class}"><span class="k">{t['delta']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{delta:+d}</span></div>
-""",
-            unsafe_allow_html=True,
-        )
-
-        chips = []
-        for i in range(len(BUCKETS)):
-            if i == actual_idx and i == picked:
-                cls, mk = "chip chip-perfect", "★"
-            elif i == actual_idx:
-                cls, mk = "chip chip-correct", "✓"
-            elif i == picked:
-                cls, mk = "chip chip-wrong", "✗"
-            else:
-                cls, mk = "chip", LETTERS[i]
-            chips.append(f"<div class='{cls}'>{mk}</div>")
-        st.markdown(f"<div class='bk-strip'>{''.join(chips)}</div>", unsafe_allow_html=True)
-
-        # 揭曉音效（key 包含 score 與 appid，phase 切到 revealed 才會 mount）
-        sfx_freq = {100: 880, 50: 523, 0: 196}[s]  # A5 / C5 / G3
-        components.html(
-            f"""
-<script>
-(function(){{
-  try {{
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const now = ctx.currentTime;
-    const o = ctx.createOscillator();
-    o.type = {'\"square\"' if s == 0 else '\"sine\"'};
-    o.frequency.setValueAtTime({sfx_freq}, now);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(0.25, now + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-    o.connect(g); g.connect(ctx.destination);
-    o.start(now);
-    o.stop(now + 0.55);
-    {'// rising arpeggio for perfect' if s == 100 else ''}
-    {'const o2 = ctx.createOscillator(); o2.type = "sine"; o2.frequency.setValueAtTime(1320, now+0.15); const g2 = ctx.createGain(); g2.gain.setValueAtTime(0, now+0.15); g2.gain.linearRampToValueAtTime(0.2, now+0.17); g2.gain.exponentialRampToValueAtTime(0.0001, now+0.7); o2.connect(g2); g2.connect(ctx.destination); o2.start(now+0.15); o2.stop(now+0.75);' if s == 100 else ''}
-  }} catch(e) {{}}
-}})();
-</script>
-""",
-            height=0,
-        )
-
-        if s == 100 and not st.session_state.celebrated:
-            st.balloons()
-            st.session_state.celebrated = True
-
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-        if st.button(f"[ {t['next']} ]", use_container_width=True, type="primary", key="btn_next"):
-            ph = st.empty()
-            ph.markdown(render_loader_html(t["load1"], t["load2"]), unsafe_allow_html=True)
-            new_g = find_target(pool, st.session_state.seen, lang_code)
-            ph.empty()
-            if new_g:
-                st.session_state.game = new_g
-                st.session_state.seen.add(new_g["appid"])
-                st.session_state.phase = "playing"
-            else:
-                st.session_state.phase = "idle"
-                st.session_state.game = None
-            st.session_state.picked = None
-            st.session_state.celebrated = False
-            st.rerun()
-
-
-# ---------- 歷史 ----------
-
-if hist:
-    with st.expander(t["history"], expanded=False):
-        recent = list(reversed(hist[-10:]))
-        st.dataframe(
-            [
-                {
-                    t["tbl_target"]:  h.get("name", ""),
-                    t["tbl_pick"]:    f"[{LETTERS[h['picked']]}] {BUCKETS[h['picked']][2]}",
-                    t["tbl_actual"]:  f"[{LETTERS[h['actual_bucket']]}] {BUCKETS[h['actual_bucket']][2]}",
-                    t["tbl_reviews"]: f"{h.get('actual_reviews', 0):,}",
-                    t["tbl_score"]:   h["score"],
-                }
-                for h in recent
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
-
-
-# ---------- BGM 控制（持續顯示，內容固定，跨 rerun 不重新 mount） ----------
+# ---------- BGM(全程存在,跨 phase 不重新 mount) ----------
 
 components.html(
     r"""
@@ -1190,11 +1195,11 @@ components.html(
 </style>
 <div id="aw">
   <span>BGM</span>
-  <button id="b">○ OFF</button>
-  <input id="vol" type="range" min="0" max="100" value="40" />
+  <button id="b">◉ ON</button>
+  <input id="vol" type="range" min="0" max="100" value="100" />
 </div>
 <script>
-let ctx=null, master=null, started=false, on=false;
+let ctx=null, master=null, started=false, on=true;
 const b = document.getElementById('b');
 const vol = document.getElementById('vol');
 
@@ -1257,8 +1262,27 @@ function setOn(v) {
   b.style.color = v ? '#fff' : '#4caf50';
 }
 
+let primeTargets = [];
+function attachPrime(t) {
+  try { t.addEventListener('pointerdown', autoPrime, true); t.addEventListener('keydown', autoPrime, true); primeTargets.push(t); } catch(e) {}
+}
+function detachPrime() {
+  for (const t of primeTargets) {
+    try { t.removeEventListener('pointerdown', autoPrime, true); t.removeEventListener('keydown', autoPrime, true); } catch(e) {}
+  }
+  primeTargets = [];
+}
+function autoPrime(e) {
+  if (e.target && e.target.closest && e.target.closest('#b')) return;
+  if (!started) { buildDrone(); started=true; setOn(true); }
+  detachPrime();
+}
+attachPrime(document);
+try { attachPrime(window.parent.document); } catch(e) {}
+
 b.addEventListener('click', () => {
-  if (!started) { buildDrone(); started=true; setOn(true); return; }
+  detachPrime();
+  if (!started) { buildDrone(); started=true; setOn(false); return; }
   setOn(!on);
 });
 vol.addEventListener('input', () => {
@@ -1272,3 +1296,671 @@ vol.addEventListener('input', () => {
 """,
     height=42,
 )
+
+
+# ---------- 滑鼠粒子背景(canvas 注入到 parent.document)----------
+components.html(
+    """
+<script>
+(function(){
+  try {
+    const parent = window.parent;
+    const doc = parent.document;
+    if (doc.body.dataset.particlesArmed === "1") return;
+    doc.body.dataset.particlesArmed = "1";
+
+    const canvas = doc.createElement('canvas');
+    canvas.id = 'bg-particles';
+    // 放在內容上層、modal 下層,低透明度當輕量氛圍特效;clicks 透過 pointer-events:none
+    canvas.style.cssText = 'position:fixed; inset:0; pointer-events:none; z-index:5; opacity:0.5; mix-blend-mode:screen;';
+    doc.body.appendChild(canvas);
+
+    const ctx = canvas.getContext('2d');
+    let mouseX = -9999, mouseY = -9999;
+
+    const SPACING = 22;          // 網格間距(px)
+    const REPEL_RADIUS = 110;    // 滑鼠影響半徑
+    const MAX_OFFSET = 5;        // 粒子最大位移
+    const SPRING = 0.18;         // 朝目標位置插值速度
+    const BASE_R = 0.55;
+    const BASE_ALPHA = 0.09;     // 平時透明度
+    const GLOW_ALPHA = 0.6;      // 滑鼠靠近時最大透明度
+
+    let particles = [];
+
+    function rebuildGrid() {
+      particles = [];
+      const cols = Math.ceil(canvas.width / SPACING) + 2;
+      const rows = Math.ceil(canvas.height / SPACING) + 2;
+      for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+          // 每隔一行錯位半格,做出更有結構感的網格(類似六邊形)
+          const offsetX = (j % 2 === 0) ? 0 : SPACING / 2;
+          const hx = i * SPACING - SPACING + offsetX;
+          const hy = j * SPACING - SPACING;
+          particles.push({
+            homeX: hx, homeY: hy,
+            x: hx, y: hy,
+          });
+        }
+      }
+    }
+
+    function resize() {
+      canvas.width = parent.innerWidth;
+      canvas.height = parent.innerHeight;
+      rebuildGrid();
+    }
+    resize();
+    parent.addEventListener('resize', resize);
+
+    doc.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    }, true);
+    doc.addEventListener('mouseleave', () => { mouseX = -9999; mouseY = -9999; });
+
+    function frame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (const p of particles) {
+        const dx = p.homeX - mouseX;
+        const dy = p.homeY - mouseY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+
+        let targetX = p.homeX, targetY = p.homeY;
+        let influence = 0;
+        if (dist < REPEL_RADIUS && dist > 0) {
+          influence = Math.pow(1 - dist / REPEL_RADIUS, 2);  // 0..1 越近越大
+          const offset = influence * MAX_OFFSET;
+          targetX = p.homeX + (dx / dist) * offset;
+          targetY = p.homeY + (dy / dist) * offset;
+        }
+
+        // 平滑插值朝 target,沒有慣性
+        p.x += (targetX - p.x) * SPRING;
+        p.y += (targetY - p.y) * SPRING;
+
+        const alpha = BASE_ALPHA + influence * (GLOW_ALPHA - BASE_ALPHA);
+        const r = BASE_R + influence * 1.2;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(170, 230, 180,' + alpha + ')';
+        if (influence > 0.05) {
+          ctx.shadowColor = 'rgba(76,175,80,0.7)';
+          ctx.shadowBlur = r * 3;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      parent.requestAnimationFrame(frame);
+    }
+    parent.requestAnimationFrame(frame);
+  } catch(e) {}
+})();
+</script>
+""",
+    height=0,
+)
+
+
+# ---------- click feedback: when a button is pressed, mark it so CSS can flash → dim it ----------
+components.html(
+    """
+<script>
+(function(){
+  try {
+    const doc = window.parent.document;
+    if (doc.body.dataset.clickFxArmed === "1") return;
+    doc.body.dataset.clickFxArmed = "1";
+    doc.addEventListener('mousedown', (e) => {
+      const btn = e.target.closest('[data-testid="stButton"] button');
+      if (btn && !btn.disabled) btn.classList.add('cta-clicked');
+    }, true);
+  } catch(e) {}
+})();
+</script>
+""",
+    height=0,
+)
+
+
+# ---------- 計時 HUD timer(JS 獨立 tick,不靠 Streamlit rerun)----------
+if (
+    st.session_state.phase in ("playing", "revealed")
+    and st.session_state.session_start_time > 0
+):
+    _start_ms = int(st.session_state.session_start_time * 1000)
+    _limit_ms = TIME_LIMIT * 1000
+    components.html(
+        f"""
+<style>
+  body {{ margin: 0; background: transparent; font-family: 'JetBrains Mono','Courier New',monospace; }}
+  #tw {{
+    display: inline-flex; gap: 14px; align-items: baseline;
+    padding: 8px 18px;
+    background: rgba(8,8,10,0.9);
+    border: 1px solid #2a2a30;
+    border-left: 3px solid var(--accent, #4caf50);
+    color: #4caf50;
+    font-size: 12px;
+    letter-spacing: 2px;
+  }}
+  #tw .lbl   {{ color: #888; font-size: 11px; }}
+  #tw .clock {{ font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #4caf50; text-shadow: 0 0 10px rgba(76,175,80,0.6); font-feature-settings: "tnum"; }}
+  #tw .score {{ color: #888; font-size: 11px; }}
+  #tw .score b {{ color: #fff; font-size: 14px; font-weight: 800; margin-left: 4px; font-feature-settings: "tnum"; text-shadow: 0 0 8px rgba(255,255,255,0.3); }}
+  .urgent .clock {{ color: #ff8a3c !important; text-shadow: 0 0 14px rgba(255,138,60,0.85) !important; animation: blink 0.45s steps(2) infinite; }}
+  .urgent {{ border-left-color: #ff8a3c !important; }}
+  .danger .clock {{ color: #ff4040 !important; text-shadow: 0 0 16px rgba(255,64,64,0.95) !important; animation: blink 0.28s steps(2) infinite; }}
+  .danger {{ border-left-color: #ff4040 !important; }}
+  @keyframes blink {{ 50% {{ opacity: 0.35; }} }}
+</style>
+<div id="tw">
+  <span class="lbl">{t['time_left']}</span>
+  <span class="clock" id="clk">--:--</span>
+  <span class="score">{t['session_score']} <b id="scr">{st.session_state.session_score}</b></span>
+</div>
+<script>
+(function(){{
+  const start = {_start_ms};
+  const limit = {_limit_ms};
+  const tw = document.getElementById('tw');
+  const clk = document.getElementById('clk');
+  function tick() {{
+    const remain = Math.max(0, limit - (Date.now() - start));
+    const s = Math.ceil(remain / 1000);
+    const mm = String(Math.floor(s / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    clk.textContent = mm + ':' + ss;
+    tw.classList.toggle('urgent', remain > 0 && remain <= 60000);
+    tw.classList.toggle('danger', remain > 0 && remain <= 15000);
+    if (remain > 0) setTimeout(tick, 250);
+  }}
+  tick();
+}})();
+</script>
+""",
+        height=50,
+    )
+
+
+def render_loader_html(line1: str, line2: str) -> str:
+    return f"""
+<div class="loader fade-in">
+  <div class="row"><span class="loader-line l1">&gt; {line1}</span></div>
+  <div class="row"><span class="loader-line l2">&gt; {line2}</span></div>
+  <div class="dots"><span></span><span></span><span></span></div>
+  <div class="progress-bar"></div>
+</div>
+"""
+
+
+# ---------- pool ----------
+
+# 先顯示載入提示——首次重建 pool 要打 5 頁 steamspy ≈ 3-5 秒,避免白屏
+_pool_cached_now = _load_cached_pool()
+_needs_rebuild = not (_pool_cached_now and "reviews" in (_pool_cached_now[0] if _pool_cached_now else {}) and len(_pool_cached_now) >= 4000)
+if _needs_rebuild:
+    _pool_loader = st.empty()
+    _pool_loader.markdown(render_loader_html("Building game pool", "First-time setup, ~5s"), unsafe_allow_html=True)
+
+try:
+    pool = load_pool()
+except Exception as e:
+    st.error(f"題庫載入失敗：{e}")
+    st.stop()
+
+if _needs_rebuild:
+    _pool_loader.empty()
+
+if not pool:
+    st.error("題庫是空的——steamspy 可能暫時無法連線,稍後重新整理試試,或刪除 ~/.config/steam-guesser/pool.json")
+    st.stop()
+
+
+# ---------- IDLE ----------
+
+if st.session_state.phase == "idle":
+    st.markdown(
+        f"""
+<div class="hero fade-in">
+  <div class="icon">◉</div>
+  <h2>&gt; {t['ready']}</h2>
+  <p>{t['intro']}</p>
+  <div class="rules">{t['rules']}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    # 提示這是計時挑戰
+    st.markdown(
+        f"<div style='text-align:center; color:var(--accent); letter-spacing:4px; font-size:13px; margin: 6px 0 12px; text-shadow:0 0 8px var(--accent-glow);'>⏱ {t['mode_timed']} · {t['time_attack']}</div>",
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3 = st.columns([1, 1, 1])
+    with c2:
+        if st.button(f"[ {t['start']} ]", use_container_width=True, type="primary", key="btn_start"):
+            ph = st.empty()
+            with ph.container():
+                st.markdown(render_loader_html(t["load1"], t["load2"]), unsafe_allow_html=True)
+                components.html(
+                    """
+<script>
+(function(){
+  try {
+    const doc = window.parent.document;
+    setTimeout(() => {
+      const l = doc.querySelector('.loader');
+      if (l) l.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+  } catch(e) {}
+})();
+</script>
+""",
+                    height=0,
+                )
+            g = find_target(pool, st.session_state.seen, lang_code)
+            ph.empty()
+            if g:
+                st.session_state.game = g
+                st.session_state.seen.add(g["appid"])
+                st.session_state.phase = "playing"
+                st.session_state.picked = None
+                st.session_state.celebrated = False
+                # reset session counters when starting (timed or casual restart)
+                st.session_state.session_score = 0
+                st.session_state.session_picks = 0
+                st.session_state.session_perfects = 0
+                st.session_state.session_nears = 0
+                st.session_state.session_misses = 0
+                st.session_state.session_start_time = time.time()
+            else:
+                st.error(t["rate_limit"])
+            st.rerun()
+
+    if hist:
+        with st.expander(t["history"], expanded=False):
+            valid = [h for h in hist if h.get("picked", -1) < len(BUCKETS) and h.get("actual_bucket", -1) < len(BUCKETS)]
+            recent = list(reversed(valid[-10:]))
+            st.dataframe(
+                [
+                    {
+                        t["tbl_target"]:  h.get("name", ""),
+                        t["tbl_pick"]:    f"[{LETTERS[h['picked']]}] {BUCKETS[h['picked']][2]}",
+                        t["tbl_actual"]:  f"[{LETTERS[h['actual_bucket']]}] {BUCKETS[h['actual_bucket']][2]}",
+                        t["tbl_reviews"]: f"{h.get('actual_reviews', 0):,}",
+                        t["tbl_score"]:   h["score"],
+                    }
+                    for h in recent
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    st.stop()
+
+
+# ---------- 時間到 → 轉 ended phase(讓使用者在 revealed 看完最後一題才結算) ----------
+
+if (
+    st.session_state.phase == "playing"
+    and st.session_state.session_start_time > 0
+    and (time.time() - st.session_state.session_start_time) >= TIME_LIMIT
+):
+    st.session_state.phase = "ended"
+
+
+# ---------- ENDED(計時模式結算)----------
+
+if st.session_state.phase == "ended":
+    final_score = int(st.session_state.session_score)
+    is_record = final_score > st.session_state.session_best
+    if is_record:
+        st.session_state.session_best = final_score
+        save_best(final_score)
+
+    record_html = (
+        f'<div class="ended-record">★ {t["new_record"]} ★</div>'
+        if is_record else ""
+    )
+    st.markdown(
+        f"""
+<div class="impact-flash impact-100"></div>
+<div class="ended-wrap fade-in">
+  <div class="ended-tag">{t['ended_title']}</div>
+  {record_html}
+  <div class="ended-score-num">+{final_score}</div>
+  <div class="ended-score-lbl">{t['session_score']}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    s_l, s_r = st.columns([1, 1])
+    with s_l:
+        st.markdown(
+            f"""
+<div class="log"><span class="k">{t['session_picks']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{st.session_state.session_picks}</span></div>
+<div class="log success"><span class="k">{t['perfects']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{st.session_state.session_perfects}</span></div>
+<div class="log gold"><span class="k">{t['near_hits']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{st.session_state.session_nears}</span></div>
+<div class="log danger"><span class="k">{t['misses']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{st.session_state.session_misses}</span></div>
+""",
+            unsafe_allow_html=True,
+        )
+    with s_r:
+        st.markdown(
+            f"""
+<div class="log"><span class="k">{t['personal_best']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{st.session_state.session_best}</span></div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+    pa_c1, pa_c2, pa_c3 = st.columns([1, 1, 1])
+    with pa_c2:
+        if st.button(f"[ {t['play_again']} ]", use_container_width=True, type="primary", key="btn_again"):
+            st.session_state.phase = "idle"
+            st.session_state.game = None
+            st.session_state.picked = None
+            st.session_state.celebrated = False
+            st.session_state.session_start_time = 0.0
+            st.session_state.session_score = 0
+            st.session_state.session_picks = 0
+            st.session_state.session_perfects = 0
+            st.session_state.session_nears = 0
+            st.session_state.session_misses = 0
+            st.rerun()
+    st.stop()
+
+
+# ---------- 載入當前遊戲 ----------
+
+g = st.session_state.game
+details, _ = fetch_game(g["appid"], lang_code)
+if details is None:
+    st.error(t["rate_limit"])
+    st.stop()
+actual_idx = bucket_of(g["reviews"])
+
+
+# ---------- 上半:視覺(左) + 描述(右) ----------
+
+L, R = st.columns([1.45, 1])
+
+with L:
+    st.markdown(
+        f'<div class="prompt" data-nonce="{g["appid"]}"><span class="arrow">&gt;</span><span class="accent">{t["scanning"]}</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    video_url = hero_video_url(details)
+    if video_url:
+        st.video(video_url, autoplay=True, loop=True, muted=True)
+    elif details.get("header_image"):
+        st.image(details["header_image"], use_container_width=True)
+
+    shots = details.get("screenshots") or []
+    if shots:
+        cols = st.columns(min(3, len(shots)))
+        for i, s in enumerate(shots[:3]):
+            cols[i].image(s["path_thumbnail"], use_container_width=True)
+
+with R:
+    title = details.get("name", "—")
+    desc = details.get("short_description", "") or "—"
+    genres = " · ".join(x["description"] for x in details.get("genres", [])[:4]) or "—"
+    release = details.get("release_date", {}).get("date", "—")
+    if details.get("price_overview"):
+        price = details["price_overview"]["final_formatted"]
+    elif details.get("is_free"):
+        price = t["free"]
+    else:
+        price = "—"
+    devs = ", ".join(details.get("developers", [])[:2]) or "—"
+
+    panel_nonce = g["appid"]
+    st.markdown(
+        f"""
+<div class="prompt" data-nonce="{panel_nonce}"><span class="arrow">&gt;</span><span class="accent">{t['metadata']}</span></div>
+<div class="panel panel-glow" data-nonce="{panel_nonce}">
+  <div class="target-title">{title}</div>
+  <div class="target-desc">{desc}</div>
+  <div class="meta">
+    <div class="row"><span class="k">{t['genre']}</span><span class="sep">::</span><span class="v">{genres}</span></div>
+    <div class="row"><span class="k">{t['release']}</span><span class="sep">::</span><span class="v">{release}</span></div>
+    <div class="row"><span class="k">{t['price']}</span><span class="sep">::</span><span class="v">{price}</span></div>
+    <div class="row"><span class="k">{t['dev']}</span><span class="sep">::</span><span class="v">{devs}</span></div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+# ---------- 下半:答題 / 結果(全寬) ----------
+
+st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+
+if st.session_state.phase == "playing":
+    st.markdown(
+        f"""
+<div class="prompt" id="query-prompt" data-nonce="{g['appid']}">
+  <span class="arrow">&gt;</span><span class="accent">QUERY</span>
+  <span style="color:var(--dim); margin-left:6px;">{t['query']}</span><span class="caret"></span>
+</div>
+<div style="color: var(--dim); font-size:12px; letter-spacing:1px; margin: 6px 0 12px;">
+  {t['select_prompt']}
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # auto-scroll to the answer area on new game. Try multiple times because Streamlit
+    # may still be rendering and reset scroll right after the iframe mounts.
+    components.html(
+        f"""
+<script>
+(function(){{
+  try {{
+    const doc = window.parent.document;
+    const win = window.parent;
+    const key = 'play_{g['appid']}';
+    if (doc.body.dataset.lastPlayScroll === key) return;
+    doc.body.dataset.lastPlayScroll = key;
+    function doScroll() {{
+      const q = doc.getElementById('query-prompt');
+      if (q) {{
+        q.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      }} else {{
+        win.scrollTo({{ top: doc.body.scrollHeight, behavior: 'smooth' }});
+      }}
+    }}
+    // Streamlit re-renders settle over ~1s; fire repeatedly so the last call wins
+    [250, 600, 1000, 1500].forEach(d => setTimeout(doScroll, d));
+  }} catch(e) {{}}
+}})();
+</script>
+""",
+        height=0,
+    )
+
+    bcols = st.columns(len(BUCKETS))
+    for i, (lo, hi, label) in enumerate(BUCKETS):
+        with bcols[i]:
+            if st.button(f"[ {LETTERS[i]} ]    {label}", key=f"bk_{i}", use_container_width=True):
+                s = score_for(i, actual_idx)
+                new_streak = st.session_state.streak + 1 if s >= 50 else 0
+                st.session_state.streak = new_streak
+                st.session_state.best = max(st.session_state.best, new_streak)
+                st.session_state.picked = i
+                st.session_state.phase = "revealed"
+                st.session_state.celebrated = False
+                # session counters (used by both modes; only 計時 mode shows結算)
+                st.session_state.session_score += s
+                st.session_state.session_picks += 1
+                if s == 100:
+                    st.session_state.session_perfects += 1
+                elif s == 50:
+                    st.session_state.session_nears += 1
+                else:
+                    st.session_state.session_misses += 1
+                save_history(
+                    {
+                        "ts": int(time.time()),
+                        "appid": g["appid"],
+                        "name": details.get("name"),
+                        "picked": i,
+                        "actual_bucket": actual_idx,
+                        "actual_reviews": g["reviews"],
+                        "score": s,
+                    }
+                )
+                st.rerun()
+
+elif st.session_state.phase == "revealed":
+    picked = st.session_state.picked
+    s = score_for(picked, actual_idx)
+    label_map = {
+        100: t["lbl_perfect"],
+        50:  t["lbl_adjacent"],
+        0:   t["lbl_miss"],
+    }
+
+    verdict_map = {
+        100: ("★", "MATCH"),
+        50:  ("◉", "NEAR_HIT"),
+        0:   ("✗", "DEVIATION"),
+    }
+    v_sym, v_code = verdict_map[s]
+    st.markdown(
+        f"""
+<div class="impact-flash impact-{s}"></div>
+<div class="verdict verdict-{s}"><span class="tw">{v_sym}&nbsp;&nbsp;{v_code}</span></div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    rev_L, rev_R = st.columns([1, 1.4])
+    with rev_L:
+        st.markdown(
+            f"""
+<div class="prompt"><span class="arrow">&gt;</span><span class="accent">{t['analysis_done']}</span></div>
+<div class="score score-{s}">
+  <div class="num">+{s}</div>
+  <div class="lbl">{label_map[s]}</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with rev_R:
+        log_class = {100: "success", 50: "gold", 0: "danger"}[s]
+        delta = picked - actual_idx
+        st.markdown(
+            f"""
+<div class="log steam"><span class="k">{t['actual']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{g['reviews']:,}</span></div>
+<div class="log"><span class="k">{t['correct']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">[{LETTERS[actual_idx]}] {BUCKETS[actual_idx][2]}</span></div>
+<div class="log"><span class="k">{t['your_pick']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">[{LETTERS[picked]}] {BUCKETS[picked][2]}</span></div>
+<div class="log {log_class}"><span class="k">{t['delta']}</span> <span style="color:var(--dimmer)">::</span> <span class="v">{delta:+d}</span></div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    chips = []
+    for i in range(len(BUCKETS)):
+        if i == actual_idx and i == picked:
+            cls, mk = "chip chip-perfect", "★"
+        elif i == actual_idx:
+            cls, mk = "chip chip-correct", "✓"
+        elif i == picked:
+            cls, mk = "chip chip-wrong", "✗"
+        else:
+            cls, mk = "chip", LETTERS[i]
+        chips.append(f"<div class='{cls}'>{mk}</div>")
+    st.markdown(f"<div class='bk-strip'>{''.join(chips)}</div>", unsafe_allow_html=True)
+
+    sfx_freq = {100: 880, 50: 523, 0: 196}[s]
+    components.html(
+        f"""
+<script>
+(function(){{
+  try {{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = {'\"square\"' if s == 0 else '\"sine\"'};
+    o.frequency.setValueAtTime({sfx_freq}, now);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.25, now + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(now);
+    o.stop(now + 0.55);
+    {'// rising arpeggio for perfect' if s == 100 else ''}
+    {'const o2 = ctx.createOscillator(); o2.type = "sine"; o2.frequency.setValueAtTime(1320, now+0.15); const g2 = ctx.createGain(); g2.gain.setValueAtTime(0, now+0.15); g2.gain.linearRampToValueAtTime(0.2, now+0.17); g2.gain.exponentialRampToValueAtTime(0.0001, now+0.7); o2.connect(g2); g2.connect(ctx.destination); o2.start(now+0.15); o2.stop(now+0.75);' if s == 100 else ''}
+  }} catch(e) {{}}
+
+  // auto-scroll to verdict so user sees the result + Next button without scrolling
+  try {{
+    const doc = window.parent.document;
+    setTimeout(() => {{
+      const v = doc.querySelector('.verdict');
+      if (v) v.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+    }}, 60);
+  }} catch(e) {{}}
+}})();
+</script>
+""",
+        height=0,
+    )
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+    # 時間到 → 改顯示「結算」按鈕,點下去看總成績
+    time_up = (
+        st.session_state.session_start_time > 0
+        and (time.time() - st.session_state.session_start_time) >= TIME_LIMIT
+    )
+    next_label = t["view_results"] if time_up else t["next"]
+    if st.button(f"[ {next_label} ]", use_container_width=True, type="primary", key="btn_next"):
+        if time_up:
+            st.session_state.phase = "ended"
+            st.rerun()
+        ph = st.empty()
+        with ph.container():
+            st.markdown(render_loader_html(t["load1"], t["load2"]), unsafe_allow_html=True)
+            components.html(
+                """
+<script>
+(function(){
+  try {
+    const doc = window.parent.document;
+    setTimeout(() => {
+      const l = doc.querySelector('.loader');
+      if (l) l.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+  } catch(e) {}
+})();
+</script>
+""",
+                height=0,
+            )
+        new_g = find_target(pool, st.session_state.seen, lang_code)
+        ph.empty()
+        if new_g:
+            st.session_state.game = new_g
+            st.session_state.seen.add(new_g["appid"])
+            st.session_state.phase = "playing"
+        else:
+            st.session_state.phase = "idle"
+            st.session_state.game = None
+        st.session_state.picked = None
+        st.session_state.celebrated = False
+        st.rerun()
+
+
