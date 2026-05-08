@@ -807,22 +807,23 @@ CSS = f"""
   /* radio (lang) */
   div[data-testid="stRadio"] > div {{ background: transparent; gap: 8px; }}
   div[data-testid="stRadio"] label {{
-    background: #0a0a0a !important;
-    border: 1px solid var(--border-2) !important;
+    background: #181818 !important;
+    border: 1px solid #6a6a6a !important;
     border-radius: 0 !important;
     padding: 10px 22px !important;
     font-size: 14px !important;
     font-weight: 700 !important;
+    color: #ffffff !important;
     cursor: pointer;
     transition: all 0.2s;
     letter-spacing: 2px;
-    opacity: 0.45;
-    filter: grayscale(0.5);
+  }}
+  div[data-testid="stRadio"] label * {{
+    color: #ffffff !important;
   }}
   div[data-testid="stRadio"] label:hover {{
-    background: #1a1a1a !important;
-    opacity: 0.85;
-    filter: grayscale(0.2);
+    background: #2a2a2a !important;
+    border-color: #999 !important;
   }}
   div[data-testid="stRadio"] label:has(input:checked) {{
     background: linear-gradient(90deg, #4caf50, #1f6a1f) !important;
