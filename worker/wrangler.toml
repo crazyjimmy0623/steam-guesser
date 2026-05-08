@@ -10,4 +10,4 @@ compatibility_date = "2025-01-01"
 # 3. 把那個網址貼到 docs/data/config.json 的 leaderboard_api 欄位
 [[kv_namespaces]]
 binding = "LB"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "241859bbb7ec41ae9f1346e87e801a74"
