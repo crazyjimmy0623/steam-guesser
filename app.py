@@ -1101,10 +1101,42 @@ CSS = f"""
     background: var(--panel);
     box-shadow: inset 0 0 50px rgba(0,0,0,0.5), 0 6px 20px rgba(0,0,0,0.6);
   }}
-  .hero .icon {{ font-size: 36px; color: var(--accent); text-shadow: 0 0 16px var(--accent-glow); margin-bottom: 12px; }}
-  .hero h2 {{ font-size: 18px; font-weight: 800; color: var(--text-bright); margin: 8px 0 6px; letter-spacing: 1px; }}
+  .hero .icon {{ font-size: 36px; color: var(--accent); text-shadow: 0 0 16px var(--accent-glow); margin-bottom: 12px; animation: heroIconPulse 2.4s ease-in-out infinite; }}
+  @keyframes heroIconPulse {{
+    0%, 100% {{ text-shadow: 0 0 14px var(--accent-glow); transform: scale(1); }}
+    50%      {{ text-shadow: 0 0 28px var(--accent-glow), 0 0 60px rgba(76,175,80,0.5); transform: scale(1.08); }}
+  }}
+  .hero-title {{
+    font-size: 42px;
+    font-weight: 900;
+    letter-spacing: 7px;
+    color: var(--text-bright);
+    margin: 8px 0 4px;
+    text-shadow: 0 0 18px var(--accent-glow), 0 0 40px rgba(76,175,80,0.3);
+    line-height: 1.1;
+    animation: titleGlow 3s ease-in-out infinite;
+  }}
+  @keyframes titleGlow {{
+    0%, 100% {{ text-shadow: 0 0 18px var(--accent-glow), 0 0 40px rgba(76,175,80,0.3); }}
+    50%      {{ text-shadow: 0 0 28px var(--accent-glow), 0 0 70px rgba(76,175,80,0.55); }}
+  }}
+  .hero-tagline {{
+    color: var(--dim);
+    font-size: 13px;
+    letter-spacing: 3px;
+    margin: 6px 0 14px;
+    font-weight: 500;
+  }}
+  .hero-divider {{
+    width: 60%;
+    height: 1px;
+    margin: 14px auto 18px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    box-shadow: 0 0 8px var(--accent-glow);
+  }}
+  .hero-status, .hero h2 {{ font-size: 16px; font-weight: 700; color: var(--accent); margin: 4px 0 10px; letter-spacing: 2px; text-shadow: 0 0 8px var(--accent-glow); }}
   .hero p {{ color: var(--dim); font-size: 13px; line-height: 1.7; margin: 4px 0; white-space: pre-line; }}
-  .hero .rules {{ color: var(--accent); text-shadow: 0 0 8px var(--accent-glow); font-size: 12px; letter-spacing: 1.5px; margin: 16px 0 24px; }}
+  .hero .rules {{ color: var(--accent); text-shadow: 0 0 8px var(--accent-glow); font-size: 12px; letter-spacing: 1.5px; margin: 16px 0 8px; }}
 
   /* expander */
   div[data-testid="stExpander"] {{
@@ -1529,7 +1561,10 @@ if st.session_state.phase == "idle":
         f"""
 <div class="hero fade-in">
   <div class="icon">◉</div>
-  <h2>&gt; {t['ready']}</h2>
+  <h1 class="hero-title">{t['title']}</h1>
+  <div class="hero-tagline">// {t['tagline']}</div>
+  <div class="hero-divider"></div>
+  <h2 class="hero-status">&gt; {t['ready']}</h2>
   <p>{t['intro']}</p>
   <div class="rules">{t['rules']}</div>
 </div>
