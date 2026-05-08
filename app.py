@@ -151,7 +151,7 @@ T = {
 
 # ---------- 資料 ----------
 
-POOL_PAGES = 5  # 5 頁 ≈ 5000 款,涵蓋熱門到中後段小品
+POOL_PAGES = 10  # 10 頁 ≈ 10000 款,確保 A 桶(10-100 評論)有足夠小品可選
 
 
 def _load_cached_pool() -> list[dict] | None:
@@ -167,11 +167,28 @@ def _load_cached_pool() -> list[dict] | None:
     return None
 
 
+def _log_pool_distribution(pool: list[dict]) -> None:
+    """印出每桶有多少款遊戲 → Streamlit log,用來確認 A 桶不空"""
+    counts = [0] * len(BUCKETS)
+    in_range = 0
+    for p in pool:
+        n = p.get("reviews", 0)
+        if MIN_REVIEWS <= n <= MAX_REVIEWS:
+            in_range += 1
+            counts[bucket_of(n)] += 1
+    breakdown = " · ".join(
+        f"{LETTERS[i]}({BUCKETS[i][2]}): {counts[i]}"
+        for i in range(len(BUCKETS))
+    )
+    print(f"[pool] total={len(pool)} in_range={in_range} | {breakdown}", flush=True)
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def load_pool() -> list[dict]:
     cached = _load_cached_pool()
     # 已有夠大的新格式 cache 就直接用
-    if cached and "reviews" in cached[0] and len(cached) >= 4000:
+    if cached and "reviews" in cached[0] and len(cached) >= 8000:
+        _log_pool_distribution(cached)
         return cached
 
     # 重抓多頁
@@ -204,6 +221,7 @@ def load_pool() -> list[dict]:
 
     if pool:
         POOL_FILE.write_text(json.dumps(pool, ensure_ascii=False), encoding="utf-8")
+        _log_pool_distribution(pool)
         return pool
 
     # 重抓全失敗 → 用任何舊 cache 撐住,寧可玩到熱門也不要無法開始
@@ -939,7 +957,7 @@ CSS_TEMPLATE = r"""
   /* 角落署名 */
   .signature {{
     position: fixed;
-    bottom: 14px; right: 18px;
+    bottom: 14px; left: 18px;
     z-index: 50;
     font-family: 'JetBrains Mono','Courier New',monospace;
     font-size: 11px;
