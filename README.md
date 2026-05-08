@@ -17,10 +17,10 @@ streamlit run app.py
 
 | 區間 | 標籤 |
 | --- | --- |
-| A | < 100 |
+| A | 10 – 100 |
 | B | 100 – 1K |
 | C | 1K – 10K |
-| D | > 10K |
+| D | 10K – 50K |
 
 計分:
 
@@ -36,6 +36,6 @@ streamlit run app.py
 
 - 題庫:SteamSpy `all`(前 5 頁 ≈ 5000 款),按桶分群隨機抽,確保 4 桶機率均等
 - 詳情 / 評論:Steam Store API(`appdetails` + `appreviews`)
-- 過濾條件:評論數 `[20, 30000]` —— 排除明顯的 3A 大作
+- 過濾條件:評論數 `[10, 50000]`(對齊 [steamle.com](https://steamle.com/) 的桶區間)
 
 題庫、歷史、個人最佳分數都存在 `~/.config/steam-guesser/`(本機,不會上傳)。

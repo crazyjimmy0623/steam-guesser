@@ -17,17 +17,17 @@ HISTORY_FILE = CACHE_DIR / "history.json"
 POOL_FILE = CACHE_DIR / "pool.json"
 BEST_FILE = CACHE_DIR / "best.json"
 
-MIN_REVIEWS = 20
-MAX_REVIEWS = 30_000  # 太多評論的 3A 一看就知道,排除
+MIN_REVIEWS = 10
+MAX_REVIEWS = 50_000  # 對齊 steamle.com 的 D 桶上限
 TIME_LIMIT = 300  # 計時模式秒數(5 分鐘)
 
 LANG_CODES = {"繁中": "tchinese", "EN": "english"}
 
 BUCKETS = [
-    (0,        100,            "< 100"),
-    (100,      1_000,          "100–1K"),
-    (1_000,    10_000,         "1K–10K"),
-    (10_000,   100_000,        "> 10K"),
+    (10,       100,             "10–100"),
+    (100,      1_000,           "100–1K"),
+    (1_000,    10_000,          "1K–10K"),
+    (10_000,   50_000,          "10K–50K"),
 ]
 LETTERS = ["A", "B", "C", "D"]
 
