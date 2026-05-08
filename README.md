@@ -2,7 +2,11 @@
 
 看遊戲畫面、影片、metadata,猜 Steam 評論數落在哪個區間。Cyberpunk 風格、5 分鐘衝高分。
 
-## Run
+## Play
+
+線上直接玩 → https://steam-guesser-t8jjjcq3oczgp5sw9usir2.streamlit.app/
+
+## Run locally
 
 ```
 pip install -r requirements.txt
