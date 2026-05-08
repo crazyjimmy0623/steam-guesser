@@ -7,3 +7,7 @@ pool.json
 best.json
 .streamlit/
 .claude/
+
+# 靜態網站開發
+.build_cache/
+docs/data/games.dev.json

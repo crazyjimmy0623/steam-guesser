@@ -1,0 +1,13 @@
+name = "steam-guesser-leaderboard"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+# 部署前要做的事:
+# 1. wrangler kv:namespace create LB
+#    → 終端機會印出 namespace id,把下面 YOUR_KV_NAMESPACE_ID 換成那個 id
+# 2. wrangler deploy
+#    → 部署後會顯示 Worker 公開網址,例如 https://steam-guesser-leaderboard.<你的帳號>.workers.dev
+# 3. 把那個網址貼到 docs/data/config.json 的 leaderboard_api 欄位
+[[kv_namespaces]]
+binding = "LB"
+id = "YOUR_KV_NAMESPACE_ID"

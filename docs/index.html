@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>STEAM REVIEW GUESSER</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="看畫面，猜這款遊戲的評論落在哪個區間。">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+</head>
+<body data-theme="en">
+  <div class="vignette"></div>
+  <div class="crt"></div>
+
+  <div class="app">
+    <header class="hud fade-in" id="hud">
+      <div class="brand">
+        <span class="blink"></span>
+        <span>◉ <span data-i18n="title">STEAM REVIEW GUESSER</span> · v0.7</span>
+      </div>
+      <div class="stats">
+        <div class="stat stat-combo" id="hud-combo-row" hidden><span data-i18n="combo">COMBO</span> <b id="hud-combo">0</b></div>
+        <div class="stat stat-streak"><span data-i18n="streak">STREAK</span> <b id="hud-streak">0</b></div>
+        <div class="stat stat-best"><span data-i18n="best">MAX</span> <b id="hud-best">0</b></div>
+        <div class="stat stat-runs"><span data-i18n="runs">RUNS</span> <b id="hud-runs">0</b></div>
+        <div class="stat stat-avg"><span data-i18n="avg">AVG</span> <b id="hud-avg">0</b></div>
+      </div>
+      <div class="lang-switch" id="lang-switch">
+        <button data-lang="EN" class="active">EN</button>
+        <button data-lang="繁中">繁中</button>
+      </div>
+    </header>
+
+    <div id="timer-widget" hidden></div>
+
+    <main id="view"></main>
+  </div>
+
+  <aside class="signature">
+    <span class="sig-prefix">//</span>
+    <span class="sig-by" data-i18n="sig_by">crafted by</span>
+    <span class="sig-name">吉米</span>
+    <span class="sig-cursor"></span>
+  </aside>
+
+  <div id="bgm-widget"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

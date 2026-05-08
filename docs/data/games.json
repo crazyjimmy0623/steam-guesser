@@ -1,0 +1,301 @@
+{
+  "version": "dev-sample-2026-05-09",
+  "build_hash": "dev0004",
+  "count": 12,
+  "buckets": [
+    {"lo": 10, "hi": 100, "label": "10–100"},
+    {"lo": 100, "hi": 1000, "label": "100–1K"},
+    {"lo": 1000, "hi": 10000, "label": "1K–10K"},
+    {"lo": 10000, "hi": 50000, "label": "10K–50K"}
+  ],
+  "games": [
+    {
+      "appid": 1145360,
+      "reviews": 42,
+      "bucket": 0,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1145360/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "黑帝斯",
+        "short_description": "[Dev Sample] Roguelike 動作遊戲,玩家扮演冥王之子逃離冥界。",
+        "genres": ["動作", "Roguelike", "獨立"],
+        "release_date": "2020 年 9 月 17 日",
+        "price": "NT$ 488",
+        "developers": ["Supergiant Games"]
+      },
+      "en": {
+        "name": "Hades",
+        "short_description": "[Dev Sample] Roguelike action where you escape the underworld as the son of Hades.",
+        "genres": ["Action", "Roguelike", "Indie"],
+        "release_date": "Sep 17, 2020",
+        "price": "$24.99",
+        "developers": ["Supergiant Games"]
+      }
+    },
+    {
+      "appid": 504230,
+      "reviews": 78,
+      "bucket": 0,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/504230/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "蔚藍",
+        "short_description": "[Dev Sample] 高難度平台跳躍,述說一段關於焦慮與勇氣的故事。",
+        "genres": ["平台", "獨立", "敘事"],
+        "release_date": "2018 年 1 月 25 日",
+        "price": "NT$ 388",
+        "developers": ["Maddy Makes Games"]
+      },
+      "en": {
+        "name": "Celeste",
+        "short_description": "[Dev Sample] Hardcore platformer about anxiety and courage at the top of a mountain.",
+        "genres": ["Platformer", "Indie", "Narrative"],
+        "release_date": "Jan 25, 2018",
+        "price": "$19.99",
+        "developers": ["Maddy Makes Games"]
+      }
+    },
+    {
+      "appid": 322330,
+      "reviews": 24,
+      "bucket": 0,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/322330/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "飢荒:聯機版",
+        "short_description": "[Dev Sample] 多人合作生存遊戲,在詭異的世界中存活下去。",
+        "genres": ["生存", "多人", "獨立"],
+        "release_date": "2016 年 4 月 21 日",
+        "price": "免費",
+        "developers": ["Klei Entertainment"]
+      },
+      "en": {
+        "name": "Don't Starve Together",
+        "short_description": "[Dev Sample] Co-op survival in a bizarre, hostile world. Don't starve.",
+        "genres": ["Survival", "Multiplayer", "Indie"],
+        "release_date": "Apr 21, 2016",
+        "price": "Free",
+        "developers": ["Klei Entertainment"]
+      }
+    },
+    {
+      "appid": 367520,
+      "reviews": 420,
+      "bucket": 1,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/367520/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "空洞騎士",
+        "short_description": "[Dev Sample] 手繪風 Metroidvania,在被遺忘的王國中揭開真相。",
+        "genres": ["Metroidvania", "動作", "獨立"],
+        "release_date": "2017 年 2 月 24 日",
+        "price": "NT$ 388",
+        "developers": ["Team Cherry"]
+      },
+      "en": {
+        "name": "Hollow Knight",
+        "short_description": "[Dev Sample] Hand-drawn Metroidvania uncovering secrets in a forgotten kingdom.",
+        "genres": ["Metroidvania", "Action", "Indie"],
+        "release_date": "Feb 24, 2017",
+        "price": "$14.99",
+        "developers": ["Team Cherry"]
+      }
+    },
+    {
+      "appid": 1426210,
+      "reviews": 850,
+      "bucket": 1,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1426210/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "雙人成行",
+        "short_description": "[Dev Sample] 雙人合作冒險,把一對夫妻變成玩偶後展開的奇幻旅程。",
+        "genres": ["合作", "冒險", "平台"],
+        "release_date": "2021 年 3 月 26 日",
+        "price": "NT$ 1290",
+        "developers": ["Hazelight Studios"]
+      },
+      "en": {
+        "name": "It Takes Two",
+        "short_description": "[Dev Sample] Two-player co-op adventure starring a couple turned into dolls.",
+        "genres": ["Co-op", "Adventure", "Platformer"],
+        "release_date": "Mar 26, 2021",
+        "price": "$39.99",
+        "developers": ["Hazelight Studios"]
+      }
+    },
+    {
+      "appid": 304930,
+      "reviews": 230,
+      "bucket": 1,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/304930/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "Unturned",
+        "short_description": "[Dev Sample] 像素風殭屍生存沙盒,玩法多元,從蓋基地到 PvP 都有。",
+        "genres": ["生存", "殭屍", "免費遊玩"],
+        "release_date": "2017 年 7 月 8 日",
+        "price": "免費",
+        "developers": ["Smartly Dressed Games"]
+      },
+      "en": {
+        "name": "Unturned",
+        "short_description": "[Dev Sample] Voxel zombie sandbox — base building, PvP, scavenging, all free.",
+        "genres": ["Survival", "Zombies", "Free To Play"],
+        "release_date": "Jul 8, 2017",
+        "price": "Free",
+        "developers": ["Smartly Dressed Games"]
+      }
+    },
+    {
+      "appid": 105600,
+      "reviews": 4200,
+      "bucket": 2,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/105600/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "泰拉瑞亞",
+        "short_description": "[Dev Sample] 2D 沙盒冒險,挖礦、建造、打 boss,內容十年依然在更新。",
+        "genres": ["沙盒", "冒險", "動作"],
+        "release_date": "2011 年 5 月 16 日",
+        "price": "NT$ 269",
+        "developers": ["Re-Logic"]
+      },
+      "en": {
+        "name": "Terraria",
+        "short_description": "[Dev Sample] 2D sandbox — mine, build, fight bosses. Still patched a decade in.",
+        "genres": ["Sandbox", "Adventure", "Action"],
+        "release_date": "May 16, 2011",
+        "price": "$9.99",
+        "developers": ["Re-Logic"]
+      }
+    },
+    {
+      "appid": 1623730,
+      "reviews": 7800,
+      "bucket": 2,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1623730/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "幻獸帕魯",
+        "short_description": "[Dev Sample] 與帕魯共生的開放世界生存,可種田可打槍。",
+        "genres": ["開放世界", "生存", "多人"],
+        "release_date": "2024 年 1 月 19 日",
+        "price": "NT$ 868",
+        "developers": ["Pocketpair"]
+      },
+      "en": {
+        "name": "Palworld",
+        "short_description": "[Dev Sample] Open-world survival with Pals — farm, build, fight, breed.",
+        "genres": ["Open World", "Survival", "Multiplayer"],
+        "release_date": "Jan 19, 2024",
+        "price": "$29.99",
+        "developers": ["Pocketpair"]
+      }
+    },
+    {
+      "appid": 1593500,
+      "reviews": 2200,
+      "bucket": 2,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1593500/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "戰神",
+        "short_description": "[Dev Sample] Kratos 與兒子穿越北歐九界,動作冒險經典移植 PC。",
+        "genres": ["動作", "冒險", "敘事"],
+        "release_date": "2022 年 1 月 14 日",
+        "price": "NT$ 1690",
+        "developers": ["Santa Monica Studio"]
+      },
+      "en": {
+        "name": "God of War",
+        "short_description": "[Dev Sample] Kratos and son traverse the Nine Realms — landmark action-adventure on PC.",
+        "genres": ["Action", "Adventure", "Narrative"],
+        "release_date": "Jan 14, 2022",
+        "price": "$49.99",
+        "developers": ["Santa Monica Studio"]
+      }
+    },
+    {
+      "appid": 252490,
+      "reviews": 18500,
+      "bucket": 3,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/252490/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "Rust",
+        "short_description": "[Dev Sample] 多人生存沙盒,刪檔重來、信任崩盤、突襲。",
+        "genres": ["生存", "多人", "PvP"],
+        "release_date": "2018 年 2 月 8 日",
+        "price": "NT$ 1090",
+        "developers": ["Facepunch Studios"]
+      },
+      "en": {
+        "name": "Rust",
+        "short_description": "[Dev Sample] Multiplayer survival sandbox — wipes, betrayal, raids.",
+        "genres": ["Survival", "Multiplayer", "PvP"],
+        "release_date": "Feb 8, 2018",
+        "price": "$39.99",
+        "developers": ["Facepunch Studios"]
+      }
+    },
+    {
+      "appid": 271590,
+      "reviews": 33000,
+      "bucket": 3,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/271590/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "俠盜獵車手 V",
+        "short_description": "[Dev Sample] 開放世界犯罪沙盒,Los Santos 三主角輪流上場。",
+        "genres": ["開放世界", "動作", "犯罪"],
+        "release_date": "2015 年 4 月 14 日",
+        "price": "NT$ 879",
+        "developers": ["Rockstar Games"]
+      },
+      "en": {
+        "name": "Grand Theft Auto V",
+        "short_description": "[Dev Sample] Open-world crime sandbox in Los Santos — three rotating protagonists.",
+        "genres": ["Open World", "Action", "Crime"],
+        "release_date": "Apr 14, 2015",
+        "price": "$29.99",
+        "developers": ["Rockstar Games"]
+      }
+    },
+    {
+      "appid": 1086940,
+      "reviews": 45000,
+      "bucket": 3,
+      "header_image": "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1086940/header.jpg",
+      "screenshots": [],
+      "trailer_url": null,
+      "tc": {
+        "name": "柏德之門 3",
+        "short_description": "[Dev Sample] 龍與地下城回合制 RPG,選擇影響整個遺忘國度。",
+        "genres": ["RPG", "回合制", "奇幻"],
+        "release_date": "2023 年 8 月 3 日",
+        "price": "NT$ 1790",
+        "developers": ["Larian Studios"]
+      },
+      "en": {
+        "name": "Baldur's Gate 3",
+        "short_description": "[Dev Sample] D&D-based turn-based RPG — every choice ripples through the Forgotten Realms.",
+        "genres": ["RPG", "Turn-Based", "Fantasy"],
+        "release_date": "Aug 3, 2023",
+        "price": "$59.99",
+        "developers": ["Larian Studios"]
+      }
+    }
+  ]
+}

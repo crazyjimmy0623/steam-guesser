@@ -427,6 +427,8 @@ if "init" not in st.session_state:
     st.session_state.session_nears = 0
     st.session_state.session_misses = 0
     st.session_state.session_best = load_best()
+    # 進場黑幕 flag:開始遊戲 / 下一題按下時設為 True,進入 playing 渲染後消費
+    st.session_state.show_curtain = False
 
 
 # ---------- CSS（語系決定深淺;cache 過,不在每次 rerun 重新格式化 800 行 CSS）----------
@@ -519,6 +521,21 @@ CSS_TEMPLATE = r"""
     background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.85) 100%);
     pointer-events: none;
     z-index: 9998;
+  }}
+
+  /* 黑幕：開始遊戲 / 下一題切換時短暫蓋住整個畫面,
+     讓底下的空殼面板先就定位,再淡出做戲劇性 reveal */
+  .curtain {{
+    position: fixed; inset: 0;
+    background: #000;
+    pointer-events: none;
+    z-index: 10000;
+    animation: curtainFade 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }}
+  @keyframes curtainFade {{
+    0%   {{ opacity: 1; }}
+    50%  {{ opacity: 1; }}
+    100% {{ opacity: 0; }}
   }}
 
   /* HUD */
@@ -615,16 +632,19 @@ CSS_TEMPLATE = r"""
   .impact-50  {{ background: radial-gradient(ellipse at center, rgba(255,200,61,0.65) 0%, rgba(255,200,61,0) 65%); }}
   .impact-0   {{ background: radial-gradient(ellipse at center, rgba(211,47,47,0.65) 0%, rgba(211,47,47,0) 65%); }}
 
-  /* entrance animations (apply to existing elements without overriding their other styling) */
-  .prompt {{ animation: slideInLeft 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  /* entrance animations — 只在黑幕存在時觸發,避免答題後重渲染又跑一次 */
+  body:has(.curtain) .prompt {{ animation: slideInLeft 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }}
   @keyframes slideInLeft {{
     from {{ opacity: 0; transform: translateX(-12px); }}
     to   {{ opacity: 1; transform: translateX(0); }}
   }}
-  /* clip-path typewriter for prompt accent (works with any text length) */
+  /* prompt accent 基礎樣式 — 永遠都在,沒有 clip-path 時就直接顯示完整字 */
   .prompt .accent {{
     display: inline-block;
     white-space: nowrap;
+  }}
+  /* clip-path typewriter — 只在黑幕存在時觸發 */
+  body:has(.curtain) .prompt .accent {{
     clip-path: inset(0 100% 0 0);
     animation: tw-clip 0.55s steps(14) 0.1s forwards;
   }}
@@ -633,21 +653,28 @@ CSS_TEMPLATE = r"""
     to   {{ clip-path: inset(0 0     0 0); }}
   }}
 
-  /* panel entry */
-  .panel-glow {{ animation: panelIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  /* panel entry — 同樣只在黑幕存在時觸發 */
+  body:has(.curtain) .panel-glow {{ animation: panelIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }}
   @keyframes panelIn {{
     from {{ opacity: 0; transform: translateY(20px); filter: blur(6px); }}
     to   {{ opacity: 1; transform: translateY(0);    filter: blur(0); }}
   }}
 
-  /* metadata text staggered entry — start AFTER panel settles */
-  .target-title {{ animation: fadeUp 0.6s 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }}
-  .target-desc  {{ animation: fadeUp 0.6s 0.50s cubic-bezier(0.22, 1, 0.36, 1) both; }}
-  .meta .row    {{ animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }}
-  .meta .row:nth-child(1) {{ animation-delay: 0.65s; }}
-  .meta .row:nth-child(2) {{ animation-delay: 0.78s; }}
-  .meta .row:nth-child(3) {{ animation-delay: 0.91s; }}
-  .meta .row:nth-child(4) {{ animation-delay: 1.04s; }}
+  /* metadata 進場(只在黑幕存在時觸發,答題後 revealed 重渲染不會再跑)
+     標題/描述採打字機效果,等黑幕散開、媒體進場後才開始打字 */
+  body:has(.curtain) .target-title {{
+    clip-path: inset(0 100% 0 0);
+    animation: tw-clip 0.75s steps(28) 1.05s forwards;
+  }}
+  body:has(.curtain) .target-desc {{
+    clip-path: inset(0 100% 0 0);
+    animation: tw-clip 1.0s steps(48) 1.25s forwards;
+  }}
+  body:has(.curtain) .meta .row {{ animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }}
+  body:has(.curtain) .meta .row:nth-child(1) {{ animation-delay: 1.45s; }}
+  body:has(.curtain) .meta .row:nth-child(2) {{ animation-delay: 1.58s; }}
+  body:has(.curtain) .meta .row:nth-child(3) {{ animation-delay: 1.71s; }}
+  body:has(.curtain) .meta .row:nth-child(4) {{ animation-delay: 1.84s; }}
 
   /* horizontal-row buttons (bucket strip): staggered fade-up */
   [data-testid="stHorizontalBlock"] [data-testid="stButton"] > button {{
@@ -745,16 +772,20 @@ CSS_TEMPLATE = r"""
   }}
   .panel-glow {{ border-left: 3px solid var(--accent); }}
 
-  /* media */
+  /* media base — 邊框與濾鏡永遠都在 */
   div[data-testid="stImage"] img,
   div[data-testid="stVideo"] video {{
     border: 1px solid var(--border-2);
-    animation: imgIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
     filter: brightness(0.9) contrast(1.05);
   }}
+  /* media 進場 — 只在黑幕在 DOM 中時觸發,延後 0.7s 讓黑幕先散開,再位移 + 淡入 */
+  body:has(.curtain) div[data-testid="stImage"] img,
+  body:has(.curtain) div[data-testid="stVideo"] video {{
+    animation: imgIn 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.7s both;
+  }}
   @keyframes imgIn {{
-    from {{ opacity: 0; filter: blur(10px) brightness(0.5); transform: translateY(20px) scale(1.02); }}
-    to   {{ opacity: 1; filter: blur(0)   brightness(0.9);  transform: translateY(0)    scale(1); }}
+    from {{ opacity: 0; filter: blur(14px) brightness(0.4); transform: translateY(36px) scale(1.04); }}
+    to   {{ opacity: 1; filter: blur(0)    brightness(0.9); transform: translateY(0)    scale(1); }}
   }}
 
   /* metadata */
@@ -1730,6 +1761,7 @@ if st.session_state.phase == "idle":
                 st.session_state.session_nears = 0
                 st.session_state.session_misses = 0
                 st.session_state.session_start_time = time.time()
+                st.session_state.show_curtain = True
             else:
                 st.error(t["rate_limit"])
             st.rerun()
@@ -1839,6 +1871,12 @@ if details is None:
     st.error(t["rate_limit"])
     st.stop()
 actual_idx = bucket_of(g["reviews"])
+
+# 進入 playing 時的黑幕 reveal:覆蓋整個畫面,半秒後淡出,
+# 期間下方面板/媒體/文字依各自延遲依序進場(空殼 → 媒體 → 文字打字)
+if st.session_state.show_curtain and st.session_state.phase == "playing":
+    st.markdown('<div class="curtain"></div>', unsafe_allow_html=True)
+    st.session_state.show_curtain = False
 
 
 # ---------- 上半:視覺(左) + 描述(右) ----------
@@ -2112,6 +2150,7 @@ elif st.session_state.phase == "revealed":
             st.session_state.game = new_g
             st.session_state.seen.add(new_g["appid"])
             st.session_state.phase = "playing"
+            st.session_state.show_curtain = True
         else:
             st.session_state.phase = "idle"
             st.session_state.game = None
