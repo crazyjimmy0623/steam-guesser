@@ -316,27 +316,47 @@ def save_best(score: int) -> None:
 
 
 def load_history() -> list[dict]:
+    """讀歷史紀錄。新格式是 JSONL(每行一個 entry,append-only);
+    舊格式是 JSON array,自動偵測並就地遷移成 JSONL。"""
     if not HISTORY_FILE.exists():
         return []
-    try:
-        data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-    except Exception:
+    text = HISTORY_FILE.read_text(encoding="utf-8")
+    if not text.strip():
         return []
-    n = len(BUCKETS)
-    return [
-        h for h in data
-        if isinstance(h.get("picked"), int)
-        and 0 <= h["picked"] < n
-        and 0 <= h.get("actual_bucket", -1) < n
-    ]
+    if text.lstrip().startswith("["):
+        # 舊格式 → 遷移成 JSONL
+        try:
+            data = json.loads(text)
+        except Exception:
+            return []
+        try:
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                for item in data:
+                    f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        except Exception:
+            pass  # 寫不進就算了,後續 load 還是能用
+        return data
+    # JSONL 格式
+    out = []
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except Exception:
+            continue
+    return out
 
 
 def save_history(entry: dict) -> None:
-    h = load_history()
-    h.append(entry)
-    HISTORY_FILE.write_text(
-        json.dumps(h, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    """JSONL append-only,O(1) 寫入,不再讀整個歷史檔。"""
+    line = json.dumps(entry, ensure_ascii=False) + "\n"
+    try:
+        with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass  # 寫不進就靜默,session_state 還是會反映進度
 
 
 def trailing_streak(hist: list[dict]) -> int:
@@ -378,6 +398,9 @@ if "init" not in st.session_state:
     st.session_state.seen = set()
     st.session_state.streak = trailing_streak(h0)
     st.session_state.best = best_streak(h0)
+    # HUD 統計值快取(避免每次 rerun 都讀 history.json 計算)
+    st.session_state.hist_total = len(h0)
+    st.session_state.hist_score_sum = sum(int(h.get("score", 0)) for h in h0)
     # time-attack mode state(永遠開,強制計時)
     st.session_state.session_start_time = 0.0
     st.session_state.session_score = 0
@@ -388,33 +411,29 @@ if "init" not in st.session_state:
     st.session_state.session_best = load_best()
 
 
-# ---------- CSS（語系決定深淺） ----------
+# ---------- CSS（語系決定深淺;cache 過,不在每次 rerun 重新格式化 800 行 CSS）----------
 
-DARKER = st.session_state.lang == "繁中"
 
-# 顏色變數
-if DARKER:
-    BG_1 = "#000000"
-    BG_2 = "#050507"
-    PANEL = "rgba(8,8,10,0.85)"
-    PANEL_2 = "rgba(12,12,14,0.7)"
-    TEXT = "#9aa0a6"
-    TEXT_BRIGHT = "#e0e0e0"
-    DIM = "#525860"
-    ACCENT = "#4caf50"
-    ACCENT_GLOW = "rgba(76,175,80,0.45)"
-else:
-    BG_1 = "#020203"
-    BG_2 = "#0a0a0e"
-    PANEL = "rgba(15,15,18,0.85)"
-    PANEL_2 = "rgba(18,18,22,0.7)"
-    TEXT = "#b0b0b0"
-    TEXT_BRIGHT = "#ffffff"
-    DIM = "#666"
-    ACCENT = "#4caf50"
-    ACCENT_GLOW = "rgba(76,175,80,0.55)"
+@st.cache_data(show_spinner=False)
+def render_css(lang: str) -> str:
+    if lang == "繁中":
+        return CSS_TEMPLATE.format(
+            BG_1="#000000", BG_2="#050507",
+            PANEL="rgba(8,8,10,0.85)", PANEL_2="rgba(12,12,14,0.7)",
+            TEXT="#9aa0a6", TEXT_BRIGHT="#e0e0e0",
+            DIM="#525860",
+            ACCENT="#4caf50", ACCENT_GLOW="rgba(76,175,80,0.45)",
+        )
+    return CSS_TEMPLATE.format(
+        BG_1="#020203", BG_2="#0a0a0e",
+        PANEL="rgba(15,15,18,0.85)", PANEL_2="rgba(18,18,22,0.7)",
+        TEXT="#b0b0b0", TEXT_BRIGHT="#ffffff",
+        DIM="#666",
+        ACCENT="#4caf50", ACCENT_GLOW="rgba(76,175,80,0.55)",
+    )
 
-CSS = f"""
+
+CSS_TEMPLATE = r"""
 <style>
   :root {{
     --bg-1: {BG_1};
@@ -917,6 +936,70 @@ CSS = f"""
   .score-0   .num {{ color: var(--red);   text-shadow: 0 0 22px rgba(211,47,47,0.55); transform: skewX(-3deg); }}
   .score-0   .lbl {{ color: var(--red); }}
 
+  /* 角落署名 */
+  .signature {{
+    position: fixed;
+    bottom: 14px; right: 18px;
+    z-index: 50;
+    font-family: 'JetBrains Mono','Courier New',monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    background: rgba(8,8,10,0.8);
+    border: 1px solid var(--border-2);
+    border-left: 3px solid var(--accent);
+    padding: 6px 14px;
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 0 0 14px rgba(0,0,0,0.5);
+    user-select: none;
+    pointer-events: auto;
+  }}
+  .signature:hover {{
+    border-left-width: 5px;
+    box-shadow: 0 0 28px var(--accent-glow), inset 0 0 16px rgba(76,175,80,0.15);
+    background: rgba(8,30,8,0.88);
+    color: #fff;
+    transform: translateY(-1px);
+  }}
+  .signature .sig-prefix {{ color: var(--dim); opacity: 0.6; }}
+  .signature .sig-by {{ color: var(--dim); }}
+  .signature:hover .sig-by {{ color: #ddd; }}
+  .signature .sig-name {{
+    color: var(--accent);
+    font-weight: 800;
+    letter-spacing: 4px;
+    text-shadow: 0 0 8px var(--accent-glow);
+    animation: sigGlitch 5s infinite;
+    display: inline-block;
+  }}
+  .signature:hover .sig-name {{
+    color: #fff;
+    text-shadow: 0 0 14px var(--accent-glow), 0 0 28px rgba(76,175,80,0.5);
+    animation: sigGlitch 1.6s infinite;
+  }}
+  @keyframes sigGlitch {{
+    0%, 88%, 100% {{ transform: translate(0); text-shadow: 0 0 8px var(--accent-glow); }}
+    89% {{ transform: translate(-1px, 0); text-shadow: -2px 0 #ff3088, 2px 0 #30d6ff, 0 0 8px var(--accent-glow); }}
+    91% {{ transform: translate(1px, 0); text-shadow:  2px 0 #ff3088, -2px 0 #30d6ff, 0 0 8px var(--accent-glow); }}
+    93% {{ transform: translate(-2px, 1px); text-shadow: -1px 1px #ff3088, 1px -1px #30d6ff, 0 0 8px var(--accent-glow); }}
+    95% {{ transform: translate(0, -1px); text-shadow: 0 0 12px var(--accent-glow); }}
+    97% {{ transform: translate(1px, 0); }}
+  }}
+  .signature .sig-cursor {{
+    display: inline-block;
+    width: 7px; height: 13px;
+    background: var(--accent);
+    margin-left: -2px;
+    box-shadow: 0 0 6px var(--accent-glow);
+    animation: sigCursor 0.85s steps(2) infinite;
+  }}
+  @keyframes sigCursor {{ 50% {{ opacity: 0; }} }}
+
   /* ended phase (time-attack 結算) */
   .ended-wrap {{
     text-align: center;
@@ -1151,15 +1234,15 @@ CSS = f"""
 </style>
 """
 
-st.markdown(CSS, unsafe_allow_html=True)
+st.markdown(render_css(st.session_state.lang), unsafe_allow_html=True)
 st.markdown('<div class="vignette"></div><div class="crt"></div>', unsafe_allow_html=True)
 
 
 # ---------- HUD ----------
 
-hist = load_history()
-total = len(hist)
-avg = (sum(h["score"] for h in hist) / total) if total else 0
+# 直接用 session_state 累積值,不在每次 rerun 重讀 history.json
+total = int(st.session_state.hist_total)
+avg = (st.session_state.hist_score_sum / total) if total else 0
 t = T[st.session_state.lang]
 
 hud_l, hud_r = st.columns([3, 1])
@@ -1193,6 +1276,20 @@ with hud_r:
 
 lang_code = LANG_CODES[st.session_state.lang]
 t = T[st.session_state.lang]
+
+
+# ---------- 角落署名(固定右下,glitch + 閃爍游標)----------
+st.markdown(
+    """
+<div class="signature">
+  <span class="sig-prefix">//</span>
+  <span class="sig-by">crafted by</span>
+  <span class="sig-name">吉米</span>
+  <span class="sig-cursor"></span>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 
 # ---------- BGM(全程存在,跨 phase 不重新 mount) ----------
@@ -1619,8 +1716,10 @@ if st.session_state.phase == "idle":
                 st.error(t["rate_limit"])
             st.rerun()
 
-    if hist:
+    if st.session_state.hist_total:
         with st.expander(t["history"], expanded=False):
+            # idle 階段才會讀完整檔案——遊戲中不會碰
+            hist = load_history()
             valid = [h for h in hist if h.get("picked", -1) < len(BUCKETS) and h.get("actual_bucket", -1) < len(BUCKETS)]
             recent = list(reversed(valid[-10:]))
             st.dataframe(
@@ -1856,6 +1955,9 @@ if st.session_state.phase == "playing":
                         "score": s,
                     }
                 )
+                # 同步 HUD 統計值,避免下次 rerun 又去讀檔
+                st.session_state.hist_total += 1
+                st.session_state.hist_score_sum += s
                 st.rerun()
 
 elif st.session_state.phase == "revealed":
