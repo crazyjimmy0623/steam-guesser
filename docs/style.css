@@ -1629,21 +1629,7 @@ body.staging .media video {
   text-shadow: 0 0 8px var(--accent-glow);
 }
 
-/* idle 整體佈局:hero 在左、模式 sidebar 在右,下面才是大的 START */
-.idle-layout {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-  flex-wrap: wrap;
-  margin: 30px auto 18px;
-  max-width: 1100px;
-}
-.idle-layout .hero {
-  margin: 0;            /* 取消 .hero 預設的 margin: 30px auto */
-  flex: 1 1 520px;
-  max-width: 600px;
-}
+/* idle:hero 置中、下方兩張 CTA 卡(模式 + START 合併,點下去直接開) */
 .hero-icon {
   font-size: 36px;
   color: var(--accent);
@@ -1652,102 +1638,148 @@ body.staging .media video {
   animation: heroIconPulse 2.4s ease-in-out infinite;
 }
 
-/* 右側 sidebar:兩張直立模式卡 */
-.hero-modes-side {
+.cta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  max-width: 800px;
+  margin: 24px auto 28px;
+}
+@media (max-width: 600px) {
+  .cta-grid { grid-template-columns: 1fr; }
+}
+.cta-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  flex: 0 1 240px;
-  min-width: 220px;
-  align-self: stretch;
-  justify-content: center;
-}
-@media (max-width: 760px) {
-  /* 窄螢幕:模式卡換成水平兩格,擺到 hero 下面 */
-  .hero-modes-side {
-    flex-direction: row;
-    flex: 1 1 100%;
-    align-self: auto;
-  }
-  .hero-modes-side .hero-mode { flex: 1; }
-}
-
-/* 模式卡 — 青色 (--info) 配色,跟綠色 START 拉開焦點層級 */
-.hero-mode {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, rgba(0,15,28,0.7), rgba(0,8,18,0.85));
-  color: var(--dim);
-  border: 1px solid rgba(41,182,246,0.35);
+  gap: 10px;
+  padding: 20px 22px;
+  background: linear-gradient(135deg, rgba(20,50,20,0.55), rgba(8,18,8,0.88));
+  color: var(--text-bright);
+  border: 2px solid var(--accent);
   border-radius: 0;
   cursor: pointer;
   font-family: inherit;
   text-align: left;
   position: relative;
   overflow: hidden;
-  transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 22px rgba(76,175,80,0.35), inset 0 0 16px rgba(76,175,80,0.15);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.2s, border-color 0.2s, background 0.2s, filter 0.2s;
+  animation: ctaCardPulse 1.8s ease-in-out 0.6s infinite;
 }
-.hero-mode::before {
+.cta-card:disabled { cursor: wait; opacity: 0.5; animation: none; }
+.cta-card::after {
   content: '';
   position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
-  background: rgba(41,182,246,0.3);
-  transition: all 0.18s;
+  inset: 0;
+  border: 1px solid var(--accent);
+  pointer-events: none;
+  animation: ctaCardRing 1.8s ease-out 0.6s infinite;
 }
-.hero-mode .hm-tag {
-  font-size: 18px;
+@keyframes ctaCardPulse {
+  0%, 100% {
+    box-shadow: 0 0 22px rgba(76,175,80,0.35), inset 0 0 16px rgba(76,175,80,0.15);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 50px rgba(76,175,80,0.85), inset 0 0 28px rgba(76,175,80,0.4);
+    transform: scale(1.012);
+  }
+}
+@keyframes ctaCardRing {
+  0%   { opacity: 0.6; transform: scale(1); }
+  80%  { opacity: 0.05; transform: scale(1.04); }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+.cta-card:hover:not(:disabled) {
+  animation: none;
+  transform: scale(1.02);
+  background: linear-gradient(135deg, rgba(40,90,40,0.7), rgba(15,30,15,0.92));
+  box-shadow: 0 0 60px rgba(76,175,80,0.7), inset 0 0 32px rgba(76,175,80,0.4);
+  filter: brightness(1.08);
+}
+.cta-card:hover:not(:disabled)::after { animation: none; opacity: 0; }
+.cta-card:active:not(:disabled) {
+  transform: scale(0.98);
+  filter: brightness(1.25);
+}
+
+.cta-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.cta-tag {
+  font-size: 26px;
   font-weight: 900;
-  letter-spacing: 1px;
-  color: var(--dim);
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-shadow: 0 0 14px var(--accent-glow);
   font-feature-settings: "tnum";
-  transition: color 0.18s;
 }
-.hero-mode .hm-name {
-  font-size: 14px;
+.cta-name {
+  font-size: 18px;
   font-weight: 800;
-  letter-spacing: 4px;
+  letter-spacing: 5px;
+  color: var(--text-bright);
 }
-.hero-mode .hm-time {
-  font-size: 11px;
+.cta-sub {
+  font-size: 12px;
+  color: var(--accent);
+  opacity: 0.85;
   letter-spacing: 1.5px;
-  color: var(--dimmer);
   font-feature-settings: "tnum";
 }
-.hero-mode:hover {
-  background: linear-gradient(135deg, rgba(20,50,80,0.5), rgba(8,20,40,0.7));
-  color: var(--info);
-  padding-left: 24px;
-  text-shadow: 0 0 8px rgba(41,182,246,0.5);
-  border-color: rgba(41,182,246,0.7);
+.cta-action {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(76,175,80,0.4);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--accent);
+  text-shadow: 0 0 10px var(--accent-glow);
 }
-.hero-mode:hover::before {
-  background: var(--info);
-  width: 5px;
-  box-shadow: 0 0 12px rgba(41,182,246,0.7);
+
+/* Endless 變體:金色,主推度比 timed 略低 */
+.cta-card.cta-endless {
+  background: linear-gradient(135deg, rgba(60,50,0,0.55), rgba(20,15,0,0.88));
+  border-color: var(--gold);
+  box-shadow: 0 0 22px rgba(255,200,61,0.32), inset 0 0 16px rgba(255,200,61,0.12);
+  animation: ctaCardPulseGold 2.0s ease-in-out 0.6s infinite;
 }
-.hero-mode:hover .hm-tag { color: var(--info); }
-.hero-mode:hover .hm-time { color: var(--info); opacity: 0.7; }
-.hero-mode.active {
-  background: linear-gradient(135deg, rgba(41,182,246,0.25), rgba(15,60,100,0.4));
-  color: var(--info);
-  border-color: var(--info);
-  box-shadow: 0 0 24px rgba(41,182,246,0.45), inset 0 0 18px rgba(41,182,246,0.18);
-  text-shadow: 0 0 10px rgba(41,182,246,0.7);
+.cta-card.cta-endless::after { border-color: var(--gold); animation-name: ctaCardRingGold; }
+@keyframes ctaCardPulseGold {
+  0%, 100% {
+    box-shadow: 0 0 18px rgba(255,200,61,0.3), inset 0 0 12px rgba(255,200,61,0.12);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 50px rgba(255,200,61,0.7), inset 0 0 28px rgba(255,200,61,0.32);
+    transform: scale(1.008);
+  }
 }
-.hero-mode.active::before {
-  background: var(--info);
-  width: 5px;
-  box-shadow: 0 0 14px rgba(41,182,246,0.9);
+@keyframes ctaCardRingGold {
+  0%   { opacity: 0.55; transform: scale(1); }
+  80%  { opacity: 0.05; transform: scale(1.04); }
+  100% { opacity: 0; transform: scale(1.05); }
 }
-.hero-mode.active .hm-tag {
-  color: var(--info);
-  text-shadow: 0 0 12px rgba(41,182,246,0.9);
+.cta-card.cta-endless:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(110,80,0,0.7), rgba(30,20,0,0.92));
+  box-shadow: 0 0 60px rgba(255,200,61,0.6), inset 0 0 32px rgba(255,200,61,0.35);
 }
-.hero-mode.active .hm-time { color: var(--info); opacity: 0.85; }
+.cta-card.cta-endless .cta-tag {
+  color: var(--gold);
+  text-shadow: 0 0 14px rgba(255,200,61,0.7);
+}
+.cta-card.cta-endless .cta-sub,
+.cta-card.cta-endless .cta-action {
+  color: var(--gold);
+  text-shadow: 0 0 10px rgba(255,200,61,0.55);
+}
+.cta-card.cta-endless .cta-action {
+  border-top-color: rgba(255,200,61,0.4);
+}
 
 /* endless 模式 playing 時的「結束本場」按鈕 */
 .endless-actions {

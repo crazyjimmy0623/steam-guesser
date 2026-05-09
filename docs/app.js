@@ -540,35 +540,41 @@ function tplLoader(line1, line2) {
 
 function tplIdle() {
   const lang = state.lang;
-  // 兩個模式直立卡片 — 放在 hero 框外側右邊
-  const modeBtns = Object.entries(MODES).map(([key, m]) => {
-    const active = key === state.mode ? ' active' : '';
+  // 兩個 CTA 卡:模式 + 開始合併。Timed = 綠(主推),Endless = 金(略低調)
+  const cta = (key, variant) => {
+    const m = MODES[key];
     const bigLabel = lang === 'EN' ? m.label : m.labelTc;
-    const sub = key === 'timed' ? '03:00' : (lang === 'EN' ? 'NO LIMIT' : '無上限');
+    const sub = key === 'timed'
+      ? (lang === 'EN' ? '03:00 · race the clock' : '03:00 · 衝高分')
+      : (lang === 'EN' ? 'no clock · play freely' : '無時間限制 · 玩到爽');
     const tag = key === 'timed' ? '[T]' : '[∞]';
+    const action = key === 'timed'
+      ? (lang === 'EN' ? '▶ START TIMED' : '▶ 開始計時')
+      : (lang === 'EN' ? '▶ START ENDLESS' : '▶ 開始無盡');
     return `
-      <button class="hero-mode${active}" data-mode="${key}">
-        <span class="hm-tag">${tag}</span>
-        <span class="hm-name">${escapeHtml(bigLabel)}</span>
-        <span class="hm-time">${escapeHtml(sub)}</span>
+      <button class="cta-card cta-${variant}" data-mode="${key}">
+        <div class="cta-head">
+          <span class="cta-tag">${tag}</span>
+          <span class="cta-name">${escapeHtml(bigLabel)}</span>
+        </div>
+        <div class="cta-sub">${escapeHtml(sub)}</div>
+        <div class="cta-action">${action}</div>
       </button>
     `;
-  }).join('');
+  };
   return `
-    <div class="idle-layout">
-      <div class="hero fade-in">
-        <div class="hero-icon">◉</div>
-        <h1 class="hero-title">${escapeHtml(t(lang, 'title'))}</h1>
-        <div class="hero-tagline">// ${escapeHtml(t(lang, 'tagline'))}</div>
-        <div class="hero-divider"></div>
-        <h2 class="hero-status">&gt; ${escapeHtml(t(lang, 'ready'))}</h2>
-        <p>${escapeHtml(t(lang, 'intro'))}</p>
-        <div class="rules">${escapeHtml(t(lang, 'rules'))}</div>
-      </div>
-      <aside class="hero-modes-side">${modeBtns}</aside>
+    <div class="hero fade-in">
+      <div class="hero-icon">◉</div>
+      <h1 class="hero-title">${escapeHtml(t(lang, 'title'))}</h1>
+      <div class="hero-tagline">// ${escapeHtml(t(lang, 'tagline'))}</div>
+      <div class="hero-divider"></div>
+      <h2 class="hero-status">&gt; ${escapeHtml(t(lang, 'ready'))}</h2>
+      <p>${escapeHtml(t(lang, 'intro'))}</p>
+      <div class="rules">${escapeHtml(t(lang, 'rules'))}</div>
     </div>
-    <div class="primary-row">
-      <button class="btn primary" id="btn-start">[ ${escapeHtml(t(lang, 'start'))} ]</button>
+    <div class="cta-grid">
+      ${cta('timed', 'timed')}
+      ${cta('endless', 'endless')}
     </div>
     ${tplHistoryExpander()}
   `;
@@ -1166,8 +1172,10 @@ async function runStagedTransition({ findGame, freshSession }) {
 
 // ---------- 階段事件綁定 ----------
 function bindPhaseEvents() {
-  const btnStart = document.getElementById('btn-start');
-  if (btnStart) btnStart.addEventListener('click', onClickStart);
+  // idle 上的兩張 CTA 卡:點下去直接以該模式開始
+  for (const c of document.querySelectorAll('.cta-card[data-mode]')) {
+    c.addEventListener('click', () => onClickStartMode(c.dataset.mode));
+  }
 
   const btnNext = document.getElementById('btn-next');
   if (btnNext) btnNext.addEventListener('click', onClickNext);
@@ -1180,11 +1188,6 @@ function bindPhaseEvents() {
 
   for (const btn of document.querySelectorAll('.bk-btn')) {
     btn.addEventListener('click', () => onClickBucket(parseInt(btn.dataset.bucket, 10)));
-  }
-
-  // 模式選擇(idle 上)
-  for (const btn of document.querySelectorAll('.hero-mode[data-mode]')) {
-    btn.addEventListener('click', () => onClickMode(btn.dataset.mode));
   }
 
   // 結束本場(endless 模式 playing 時)
@@ -1206,11 +1209,14 @@ function bindPhaseEvents() {
 // ---------- 事件 handlers ----------
 let inTransition = false;
 
-async function onClickStart() {
+async function onClickStartMode(mode) {
   if (inTransition) return;
+  if (mode && MODES[mode]) {
+    state.mode = mode;
+    storage.saveMode(mode);
+  }
   inTransition = true;
-  const btn = document.getElementById('btn-start');
-  if (btn) btn.disabled = true;
+  for (const c of document.querySelectorAll('.cta-card')) c.disabled = true;
   await runStagedTransition({ findGame: findTarget, freshSession: true });
   inTransition = false;
 }
@@ -1283,16 +1289,6 @@ function onClickBucket(idx) {
 
   // 揭曉音效(用 base 不是 final,音效仍依命中等級判定)
   requestAnimationFrame(() => playSFX(sc.base));
-}
-
-function onClickMode(mode) {
-  if (!MODES[mode] || mode === state.mode) return;
-  state.mode = mode;
-  storage.saveMode(mode);
-  // 只重 render 模式按鈕高亮,不影響其他內容
-  for (const btn of document.querySelectorAll('.hero-mode[data-mode]')) {
-    btn.classList.toggle('active', btn.dataset.mode === mode);
-  }
 }
 
 function onClickEndRun() {
@@ -1414,10 +1410,16 @@ function setupKeyboardShortcuts() {
         if (btn) { btn.classList.add('cta-clicked'); playPressSFX(); btn.click(); }
       }
     } else if (state.phase === 'idle') {
-      if (e.key === 'Enter' || e.key === ' ') {
+      // T = timed, E = endless, Enter/Space = 上次選的模式(預設 timed)
+      const k = e.key.toLowerCase();
+      let mode = null;
+      if (k === 't') mode = 'timed';
+      else if (k === 'e') mode = 'endless';
+      else if (e.key === 'Enter' || e.key === ' ') mode = MODES[state.mode] ? state.mode : 'timed';
+      if (mode) {
         e.preventDefault();
-        const btn = document.getElementById('btn-start');
-        if (btn) { btn.classList.add('cta-clicked'); playPressSFX(); btn.click(); }
+        const card = document.querySelector(`.cta-card[data-mode="${mode}"]`);
+        if (card) { card.classList.add('cta-clicked'); playPressSFX(); card.click(); }
       }
     } else if (state.phase === 'ended') {
       if (e.key === 'Enter' || e.key === ' ') {
