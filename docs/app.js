@@ -540,35 +540,33 @@ function tplLoader(line1, line2) {
 
 function tplIdle() {
   const lang = state.lang;
-  // 兩個模式卡片 — apartment-style,綠色 accent 左邊條
+  // 兩個模式 segmented control(放標題右邊)
   const modeBtns = Object.entries(MODES).map(([key, m]) => {
     const active = key === state.mode ? ' active' : '';
     const bigLabel = lang === 'EN' ? m.label : m.labelTc;
-    const sub = key === 'timed'
-      ? (lang === 'EN' ? '03:00 · race the clock' : '03:00 · 衝高分')
-      : (lang === 'EN' ? 'no clock · play freely'  : '無時間限制 · 玩到爽');
+    const sub = key === 'timed' ? '03:00' : (lang === 'EN' ? 'NO LIMIT' : '無上限');
     const tag = key === 'timed' ? '[T]' : '[∞]';
     return `
-      <button class="mode-btn${active}" data-mode="${key}">
-        <span class="mode-tag">${tag}</span>
-        <span class="mode-body">
-          <span class="mode-name">${escapeHtml(bigLabel)}</span>
-          <span class="mode-time">// ${escapeHtml(sub)}</span>
-        </span>
+      <button class="hero-mode${active}" data-mode="${key}">
+        <span class="hm-tag">${tag}</span>
+        <span class="hm-name">${escapeHtml(bigLabel)}</span>
+        <span class="hm-time">${escapeHtml(sub)}</span>
       </button>
     `;
   }).join('');
   return `
     <div class="hero fade-in">
-      <div class="icon">◉</div>
-      <h1 class="hero-title">${escapeHtml(t(lang, 'title'))}</h1>
+      <div class="hero-icon">◉</div>
+      <div class="hero-header">
+        <h1 class="hero-title">${escapeHtml(t(lang, 'title'))}</h1>
+        <div class="hero-modes">${modeBtns}</div>
+      </div>
       <div class="hero-tagline">// ${escapeHtml(t(lang, 'tagline'))}</div>
       <div class="hero-divider"></div>
       <h2 class="hero-status">&gt; ${escapeHtml(t(lang, 'ready'))}</h2>
       <p>${escapeHtml(t(lang, 'intro'))}</p>
       <div class="rules">${escapeHtml(t(lang, 'rules'))}</div>
     </div>
-    <div class="mode-grid">${modeBtns}</div>
     <div class="primary-row">
       <button class="btn primary" id="btn-start">[ ${escapeHtml(t(lang, 'start'))} ]</button>
     </div>
@@ -1185,7 +1183,7 @@ function bindPhaseEvents() {
   }
 
   // 模式選擇(idle 上)
-  for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
+  for (const btn of document.querySelectorAll('.hero-mode[data-mode]')) {
     btn.addEventListener('click', () => onClickMode(btn.dataset.mode));
   }
 
@@ -1292,7 +1290,7 @@ function onClickMode(mode) {
   state.mode = mode;
   storage.saveMode(mode);
   // 只重 render 模式按鈕高亮,不影響其他內容
-  for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
+  for (const btn of document.querySelectorAll('.hero-mode[data-mode]')) {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   }
 }
