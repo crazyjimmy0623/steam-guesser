@@ -13,13 +13,21 @@ export function mountBGM(container) {
   const toggleBtn = container.querySelector('#bgm-toggle');
   const vol = container.querySelector('#bgm-vol');
 
-  let ctx = null, master = null, started = false, on = true;
+  let ctx = null, master = null, userGain = null, started = false, on = true;
 
   function buildDrone() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // master:內部 gain,LFO 模 ±0.025;不直接接 destination,
+    // 否則 slider 拉到 0 時 LFO 貢獻仍會輸出 → 出現明顯週期脈衝
     master = ctx.createGain();
     master.gain.value = 0;
-    master.connect(ctx.destination);
+
+    // userGain:最後一道閘,完全聽 slider/ON-OFF。slider=0 → 0,絕對靜音。
+    userGain = ctx.createGain();
+    userGain.gain.value = 0;
+    master.connect(userGain);
+    userGain.connect(ctx.destination);
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
@@ -40,6 +48,7 @@ export function mountBGM(container) {
     osc('sine', 110, 0.35);
     osc('sine', 56.2, 0.4);
 
+    // LFO 接在 master.gain 上 (內部),不會洩漏給 userGain
     const lfo = ctx.createOscillator();
     lfo.type = 'sine'; lfo.frequency.value = 0.13;
     const lfoG = ctx.createGain(); lfoG.gain.value = 0.025;
@@ -63,11 +72,16 @@ export function mountBGM(container) {
     noise.start();
   }
 
+  // master 內部 = 0.12 ± LFO 0.025(沒被 slider 影響)
+  // userGain 由 ON/OFF + slider 決定,真正控制是否輸出
   function setOn(v) {
     if (!started) return;
-    const tgt = v ? (parseInt(vol.value) / 100) * 0.12 : 0;
+    const masterTgt = v ? 0.12 : 0;
+    const userTgt = v ? parseInt(vol.value) / 100 : 0;
     master.gain.cancelScheduledValues(ctx.currentTime);
-    master.gain.linearRampToValueAtTime(tgt, ctx.currentTime + (v ? 1.8 : 0.6));
+    master.gain.linearRampToValueAtTime(masterTgt, ctx.currentTime + (v ? 1.8 : 0.6));
+    userGain.gain.cancelScheduledValues(ctx.currentTime);
+    userGain.gain.linearRampToValueAtTime(userTgt, ctx.currentTime + (v ? 1.8 : 0.6));
     on = v;
     toggleBtn.textContent = v ? '◉ ON' : '○ OFF';
     toggleBtn.style.background = v ? '#1a3a1a' : '#0a0a0a';
@@ -92,9 +106,9 @@ export function mountBGM(container) {
   });
   vol.addEventListener('input', () => {
     if (started && on) {
-      const tgt = (parseInt(vol.value) / 100) * 0.12;
-      master.gain.cancelScheduledValues(ctx.currentTime);
-      master.gain.linearRampToValueAtTime(tgt, ctx.currentTime + 0.2);
+      const tgt = parseInt(vol.value) / 100;
+      userGain.gain.cancelScheduledValues(ctx.currentTime);
+      userGain.gain.linearRampToValueAtTime(tgt, ctx.currentTime + 0.2);
     }
   });
 }

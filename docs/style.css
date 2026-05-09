@@ -1869,11 +1869,14 @@ body.staging .media video {
 .timer.danger .clock { color: #ff4040; text-shadow: 0 0 16px rgba(255,64,64,0.95); animation: blink 0.28s steps(2) infinite; }
 .timer.danger { border-left-color: #ff4040; }
 
-/* BGM widget mount point */
+/* BGM + SFX widgets mount point — 兩個 widget 並排在右下 */
 #bgm-widget {
   position: fixed;
   bottom: 14px; right: 18px;
   z-index: 50;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 .bgm {
   display: flex; gap: 8px; align-items: center;
@@ -1898,6 +1901,38 @@ body.staging .media video {
 }
 .bgm button:hover { background: #1a3a1a; color: #fff; }
 .bgm input[type="range"] { width: 80px; }
+
+/* SFX 開關 widget — 跟 BGM 一致風格,單顆按鈕 */
+.sfx-widget {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(8,8,10,0.9);
+  border: 1px solid #2a2a30;
+  border-left: 3px solid #4caf50;
+  color: #4caf50;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.sfx-widget button {
+  background: #0a0a0a;
+  border: 1px solid #4caf50;
+  color: #4caf50;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-shadow: 0 0 6px rgba(76,175,80,0.5);
+}
+.sfx-widget button:hover { background: #1a3a1a; color: #fff; }
+.sfx-widget button.off {
+  color: #888;
+  border-color: #444;
+  text-shadow: none;
+}
+.sfx-widget button.off:hover { color: #aaa; background: #1a1a1a; }
 
 /* particle canvas (injected by JS) */
 #bg-particles {

@@ -6,7 +6,7 @@ import { applyI18n, t, T, THEME_OF, LANGS } from './modules/i18n.js';
 import { mountBGM }       from './modules/bgm.js';
 import { mountParticles } from './modules/particles.js';
 import { startTimer }     from './modules/timer.js';
-import { playSFX, playHoverSFX, playPressSFX, playTickSFX, playClockSFX } from './modules/sfx.js';
+import { playSFX, playHoverSFX, playPressSFX, playTickSFX, playClockSFX, mountSfxControls } from './modules/sfx.js';
 import { triggerPerfectFx, triggerMissShake, boostCrt, showToast, triggerTimeUpFx } from './modules/fx.js';
 import { extractAccentColor, applyAccent } from './modules/colorize.js';
 
@@ -1491,9 +1491,11 @@ async function boot() {
     setupLangSwitch();
     setupKeyboardShortcuts();
 
-    // 背景特效 + BGM widget
+    // 背景特效 + BGM / SFX widgets
     mountParticles();
-    mountBGM(document.getElementById('bgm-widget'));
+    const audioContainer = document.getElementById('bgm-widget');
+    mountBGM(audioContainer);
+    mountSfxControls(audioContainer);
 
     // config 跟 pool 平行載(loadConfig 內部 try/catch,不會 throw;loadPool 失敗直接退出)
     try {

@@ -1,7 +1,13 @@
-// 音效 — 從 app.py:2080-2099 搬,並擴充 hover / press UI 音效
+// 音效 — 從 app.py:2080-2099 搬,並擴充 hover / press / clock / tick UI 音效
 // 共用單一 AudioContext,避免 hover 連發爆量建 context
+// 加 sfxGain 當 mute 控制(slider/UI 切換時 ramp gain),muted 狀態存 localStorage
 
 let sharedCtx = null;
+let sfxGain = null;
+let muted = (() => {
+  try { return localStorage.getItem('sg_sfx_muted') === '1'; }
+  catch (_) { return false; }
+})();
 
 function getCtx() {
   if (sharedCtx) return sharedCtx;
@@ -10,10 +16,48 @@ function getCtx() {
     if (sharedCtx.state === 'suspended') {
       sharedCtx.resume().catch(() => {});
     }
+    sfxGain = sharedCtx.createGain();
+    sfxGain.gain.value = muted ? 0 : 1;
+    sfxGain.connect(sharedCtx.destination);
   } catch (e) {
     return null;
   }
   return sharedCtx;
+}
+
+// 取得當前的 SFX bus(每個 SFX 都接這裡而不是 ctx.destination,讓 mute 生效)
+function bus() { return sfxGain || (getCtx() && sfxGain); }
+
+export function isSfxMuted() { return muted; }
+
+export function setSfxMuted(m) {
+  muted = !!m;
+  try { localStorage.setItem('sg_sfx_muted', muted ? '1' : '0'); } catch (_) {}
+  if (sfxGain && sharedCtx) {
+    sfxGain.gain.cancelScheduledValues(sharedCtx.currentTime);
+    sfxGain.gain.linearRampToValueAtTime(muted ? 0 : 1, sharedCtx.currentTime + 0.1);
+  }
+}
+
+// UI:在 container 內 mount 一個 SFX 開關按鈕(風格跟 BGM widget 一致)
+export function mountSfxControls(container) {
+  const wrap = document.createElement('div');
+  wrap.className = 'sfx-widget';
+  wrap.innerHTML = `
+    <span>SFX</span>
+    <button id="sfx-toggle" type="button">${muted ? '○ OFF' : '◉ ON'}</button>
+  `;
+  container.appendChild(wrap);
+  const btn = wrap.querySelector('#sfx-toggle');
+  const refresh = () => {
+    btn.textContent = muted ? '○ OFF' : '◉ ON';
+    btn.classList.toggle('off', muted);
+  };
+  refresh();
+  btn.addEventListener('click', () => {
+    setSfxMuted(!muted);
+    refresh();
+  });
 }
 
 // ---------- 揭曉音效:100/50/0 三種 ----------
@@ -31,7 +75,7 @@ export function playSFX(score) {
     g.gain.setValueAtTime(0, now);
     g.gain.linearRampToValueAtTime(0.25, now + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-    o.connect(g); g.connect(ctx.destination);
+    o.connect(g); g.connect(sfxGain);
     o.start(now);
     o.stop(now + 0.55);
 
@@ -43,7 +87,7 @@ export function playSFX(score) {
       g2.gain.setValueAtTime(0, now + 0.15);
       g2.gain.linearRampToValueAtTime(0.2, now + 0.17);
       g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
-      o2.connect(g2); g2.connect(ctx.destination);
+      o2.connect(g2); g2.connect(sfxGain);
       o2.start(now + 0.15);
       o2.stop(now + 0.75);
     }
@@ -77,7 +121,7 @@ export function playHoverSFX() {
     g.gain.linearRampToValueAtTime(0.035, now + 0.002);
     g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
 
-    noise.connect(hp); hp.connect(g); g.connect(ctx.destination);
+    noise.connect(hp); hp.connect(g); g.connect(sfxGain);
     noise.start(now);
   } catch (e) { /* 靜默 */ }
 }
@@ -109,7 +153,7 @@ export function playClockSFX() {
     g.gain.linearRampToValueAtTime(0.07, now + 0.002);
     g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
 
-    noise.connect(bp); bp.connect(g); g.connect(ctx.destination);
+    noise.connect(bp); bp.connect(g); g.connect(sfxGain);
     noise.start(now);
   } catch (e) { /* 靜默 */ }
 }
@@ -128,7 +172,7 @@ export function playTickSFX(intensity = 1) {
     g.gain.setValueAtTime(0, now);
     g.gain.linearRampToValueAtTime(0.12 * intensity, now + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
-    o.connect(g); g.connect(ctx.destination);
+    o.connect(g); g.connect(sfxGain);
     o.start(now);
     o.stop(now + 0.13);
 
@@ -141,7 +185,7 @@ export function playTickSFX(intensity = 1) {
       g2.gain.setValueAtTime(0, now + 0.13);
       g2.gain.linearRampToValueAtTime(0.08 * intensity, now + 0.135);
       g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-      o2.connect(g2); g2.connect(ctx.destination);
+      o2.connect(g2); g2.connect(sfxGain);
       o2.start(now + 0.13);
       o2.stop(now + 0.24);
     }
@@ -180,7 +224,7 @@ export function playPressSFX() {
     bodyG.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
 
     o1.connect(lp); o2.connect(lp);
-    lp.connect(bodyG); bodyG.connect(ctx.destination);
+    lp.connect(bodyG); bodyG.connect(sfxGain);
     o1.start(now); o1.stop(now + 0.28);
     o2.start(now); o2.stop(now + 0.28);
 
@@ -193,7 +237,7 @@ export function playPressSFX() {
     subG.gain.setValueAtTime(0, now);
     subG.gain.linearRampToValueAtTime(0.09, now + 0.008);
     subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-    sub.connect(subG); subG.connect(ctx.destination);
+    sub.connect(subG); subG.connect(sfxGain);
     sub.start(now); sub.stop(now + 0.25);
   } catch (e) { /* 靜默 */ }
 }
