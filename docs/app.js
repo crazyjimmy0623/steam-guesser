@@ -540,7 +540,7 @@ function tplLoader(line1, line2) {
 
 function tplIdle() {
   const lang = state.lang;
-  // 兩個模式 segmented control(放標題右邊)
+  // 兩個模式直立卡片 — 放在 hero 框外側右邊
   const modeBtns = Object.entries(MODES).map(([key, m]) => {
     const active = key === state.mode ? ' active' : '';
     const bigLabel = lang === 'EN' ? m.label : m.labelTc;
@@ -555,17 +555,17 @@ function tplIdle() {
     `;
   }).join('');
   return `
-    <div class="hero fade-in">
-      <div class="hero-icon">◉</div>
-      <div class="hero-header">
+    <div class="idle-layout">
+      <div class="hero fade-in">
+        <div class="hero-icon">◉</div>
         <h1 class="hero-title">${escapeHtml(t(lang, 'title'))}</h1>
-        <div class="hero-modes">${modeBtns}</div>
+        <div class="hero-tagline">// ${escapeHtml(t(lang, 'tagline'))}</div>
+        <div class="hero-divider"></div>
+        <h2 class="hero-status">&gt; ${escapeHtml(t(lang, 'ready'))}</h2>
+        <p>${escapeHtml(t(lang, 'intro'))}</p>
+        <div class="rules">${escapeHtml(t(lang, 'rules'))}</div>
       </div>
-      <div class="hero-tagline">// ${escapeHtml(t(lang, 'tagline'))}</div>
-      <div class="hero-divider"></div>
-      <h2 class="hero-status">&gt; ${escapeHtml(t(lang, 'ready'))}</h2>
-      <p>${escapeHtml(t(lang, 'intro'))}</p>
-      <div class="rules">${escapeHtml(t(lang, 'rules'))}</div>
+      <aside class="hero-modes-side">${modeBtns}</aside>
     </div>
     <div class="primary-row">
       <button class="btn primary" id="btn-start">[ ${escapeHtml(t(lang, 'start'))} ]</button>
