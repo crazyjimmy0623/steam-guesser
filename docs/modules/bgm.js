@@ -17,6 +17,11 @@ export function mountBGM(container) {
 
   function buildDrone() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // iOS Safari / 某些手機瀏覽器:AudioContext 預設 suspended,需要在 user gesture
+    // handler 內顯式 resume 才會出聲(autoPrime 是被 pointerdown 同步呼叫,gesture 還在)
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
 
     // master:內部 gain,LFO 模 ±0.025;不直接接 destination,
     // 否則 slider 拉到 0 時 LFO 貢獻仍會輸出 → 出現明顯週期脈衝

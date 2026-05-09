@@ -2166,6 +2166,9 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
     padding: 0 4px;
     font-size: 9px;
   }
+  /* chip strip 跟 bucket buttons 同樣 4 欄、padding 略增加 */
+  .bk-strip { gap: 4px; }
+  .chip { padding: 14px 0; font-size: 13px; }
 
   /* Verdict / score 縮放 */
   .verdict { font-size: 17px; letter-spacing: 3px; padding: 11px 14px; }
@@ -2220,7 +2223,8 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
 /* ========== 超小螢幕 (<= 400px),把 4 桶 改成 2x2 比較好按 ========== */
 @media (max-width: 400px) {
   .hero-title { font-size: 24px; letter-spacing: 3px; }
-  .bk-buttons {
+  .bk-buttons,
+  .bk-strip {
     grid-template-columns: 1fr 1fr;
     gap: 6px;
   }
@@ -2228,6 +2232,11 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
     padding: 18px 14px;
     font-size: 14px;
     letter-spacing: 1px;
+  }
+  /* chip 也跟著放大 + 同 2x2 視覺一致 */
+  .chip {
+    padding: 18px 0;
+    font-size: 16px;
   }
   /* 2x2 reading order: A B 在上,C D 在下,delay 一致改 */
   .bk-buttons > .btn:nth-child(1) { animation-delay: 0.55s; }
