@@ -93,16 +93,16 @@ export function triggerTimeUpFx(label = 'TIME UP', onComplete = null) {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const now = ctx.currentTime;
-    // 雙音 alarm:200Hz / 280Hz 交替
+    // 雙音 alarm:200Hz / 280Hz 交替,gain 從 0.18 降到 0.07 + 用 sine 波(原本 square 太刺)
     const tones = [200, 280, 200, 280];
     tones.forEach((freq, i) => {
       const o = ctx.createOscillator();
-      o.type = 'square';
+      o.type = 'sine';
       o.frequency.setValueAtTime(freq, now + i * 0.18);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0, now + i * 0.18);
-      g.gain.linearRampToValueAtTime(0.18, now + i * 0.18 + 0.01);
-      g.gain.setValueAtTime(0.18, now + i * 0.18 + 0.14);
+      g.gain.linearRampToValueAtTime(0.07, now + i * 0.18 + 0.015);
+      g.gain.setValueAtTime(0.07, now + i * 0.18 + 0.13);
       g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.18 + 0.16);
       o.connect(g); g.connect(ctx.destination);
       o.start(now + i * 0.18);
