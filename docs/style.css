@@ -949,7 +949,7 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
 .score-0   .num { color: var(--red);   text-shadow: 0 0 22px rgba(211,47,47,0.55); transform: skewX(-3deg); }
 .score-0   .lbl { color: var(--red); }
 
-/* ---------- corner signature ---------- */
+/* ---------- corner signature — anchor 連到 GitHub ---------- */
 .signature {
   position: fixed;
   bottom: 14px; left: 18px;
@@ -971,6 +971,8 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
   box-shadow: 0 0 14px rgba(0,0,0,0.5);
   user-select: none;
   pointer-events: auto;
+  text-decoration: none;
+  cursor: pointer;
 }
 .signature:hover {
   border-left-width: 5px;
