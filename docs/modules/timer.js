@@ -32,14 +32,18 @@ export function startTimer({ container, getStartTime, getScore, getPhase, getTim
     tw.classList.toggle('danger', remain > 0 && remain <= 15000);
     scr.textContent = String(getScore());
 
-    // 心跳 callback:剩 ≤15s 時整數秒踏上一次,只在跨越秒數時觸發
-    if (remain > 0 && remain <= 15000 && s !== lastTickedSec && onTick) {
+    // 倒數音效 callback:剩 ≤30s 時整數秒踏上一次(實際是時鐘 / 心跳由外部選音)
+    if (remain > 0 && remain <= 30000 && s !== lastTickedSec && onTick) {
       lastTickedSec = s;
       onTick(s);
     }
 
+    // 時間到 → 不論在 playing 或 revealed 都立刻觸發 onExpire
+    // (revealed 之前要等使用者按 Next 才結算,改成直接打斷)
     if (remain <= 0 && !expired && getPhase() !== 'ended') {
       expired = true;
+      stopped = true;
+      clearInterval(intervalId);
       onExpire();
     }
   }

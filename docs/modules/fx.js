@@ -75,6 +75,53 @@ export function triggerMissShake() {
   setTimeout(() => document.body.classList.remove('miss-shake'), 350);
 }
 
+// ---------- 時間到全螢幕特效 — 紅色 TIME UP 大字 + 紅色 vignette + 警報音 ----------
+// onComplete:大概 1.5s 後 callback 進結算 phase
+export function triggerTimeUpFx(label = 'TIME UP', onComplete = null) {
+  // 全螢幕紅色覆蓋層
+  const overlay = document.createElement('div');
+  overlay.className = 'timeup-overlay';
+  overlay.innerHTML = `
+    <div class="timeup-content">
+      <div class="timeup-glitch" data-text="${label}">${label}</div>
+      <div class="timeup-tag">SESSION TERMINATED</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // 警報聲(獨立 AudioContext,避免被 BGM 共用 ctx 影響;不用 sfx.js 因為它有共用)
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+    // 雙音 alarm:200Hz / 280Hz 交替
+    const tones = [200, 280, 200, 280];
+    tones.forEach((freq, i) => {
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(freq, now + i * 0.18);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, now + i * 0.18);
+      g.gain.linearRampToValueAtTime(0.18, now + i * 0.18 + 0.01);
+      g.gain.setValueAtTime(0.18, now + i * 0.18 + 0.14);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.18 + 0.16);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(now + i * 0.18);
+      o.stop(now + i * 0.18 + 0.18);
+    });
+    // 1.5 秒後關 audio context
+    setTimeout(() => { try { ctx.close(); } catch (_) {} }, 1500);
+  } catch (e) { /* audio 不通就靜默 */ }
+
+  // 1.5 秒後移除 overlay + 呼叫 callback
+  setTimeout(() => {
+    overlay.classList.add('out');
+    setTimeout(() => {
+      overlay.remove();
+      if (onComplete) onComplete();
+    }, 400);
+  }, 1500);
+}
+
 // ---------- 浮動 toast (排行榜上榜通知等通用) ----------
 export function showToast({ icon = '↑', title = '', subtitle = '', tier = 'default', durationMs = 2500 }) {
   const toast = document.createElement('div');

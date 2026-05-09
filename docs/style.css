@@ -226,6 +226,95 @@ button, input, textarea {
 @keyframes tw-go    { to { width: 100%; } }
 @keyframes tw-caret { 50% { border-color: transparent; } }
 
+/* ---------- 時間到全螢幕覆蓋(配合 fx.js triggerTimeUpFx)---------- */
+.timeup-overlay {
+  position: fixed; inset: 0;
+  z-index: 10002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(80,0,0,0.4) 0%, rgba(140,0,0,0.85) 70%, rgba(60,0,0,0.95) 100%);
+  pointer-events: none;
+  animation: timeupIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  backdrop-filter: blur(2px);
+}
+.timeup-overlay.out {
+  animation: timeupOut 0.4s ease-in forwards;
+}
+@keyframes timeupIn {
+  from { opacity: 0; backdrop-filter: blur(0); }
+  to   { opacity: 1; backdrop-filter: blur(2px); }
+}
+@keyframes timeupOut {
+  to { opacity: 0; }
+}
+.timeup-content {
+  text-align: center;
+  animation: timeupContentIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
+}
+@keyframes timeupContentIn {
+  0%   { opacity: 0; transform: scale(0.5) rotate(-3deg); filter: blur(8px); }
+  60%  { opacity: 1; transform: scale(1.08) rotate(0); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1) rotate(0); filter: blur(0); }
+}
+.timeup-glitch {
+  font-size: 96px;
+  font-weight: 900;
+  letter-spacing: 12px;
+  color: #ff3333;
+  text-shadow: 0 0 30px rgba(255,40,40,0.95), 0 0 60px rgba(255,40,40,0.7), 0 0 100px rgba(255,40,40,0.4);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  position: relative;
+  animation: timeupShake 0.18s steps(2) 0.5s 6, timeupPulse 1s ease-in-out 1s infinite;
+}
+.timeup-glitch::before,
+.timeup-glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.timeup-glitch::before {
+  color: #30d6ff;
+  transform: translate(-3px, 1px);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  animation: timeupChroma 0.4s steps(2) 0.5s infinite;
+}
+.timeup-glitch::after {
+  color: #ff30aa;
+  transform: translate(3px, -1px);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  animation: timeupChroma 0.4s steps(2) 0.5s infinite reverse;
+}
+@keyframes timeupShake {
+  0%, 100% { transform: translate(0); }
+  25%      { transform: translate(-4px, 2px); }
+  75%      { transform: translate(4px, -2px); }
+}
+@keyframes timeupPulse {
+  0%, 100% { text-shadow: 0 0 30px rgba(255,40,40,0.95), 0 0 60px rgba(255,40,40,0.7); }
+  50%      { text-shadow: 0 0 50px rgba(255,80,80,1), 0 0 100px rgba(255,40,40,0.95); }
+}
+@keyframes timeupChroma {
+  0%, 100% { transform: translate(-3px, 1px); }
+  50%      { transform: translate(3px, -2px); }
+}
+.timeup-tag {
+  margin-top: 24px;
+  font-size: 14px;
+  letter-spacing: 8px;
+  color: #ff8888;
+  font-weight: 700;
+  text-shadow: 0 0 12px rgba(255,80,80,0.7);
+  animation: timeupTagIn 0.5s ease-out 0.5s both;
+}
+@keyframes timeupTagIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ---------- 浮動 toast (排行榜上榜通知等) ---------- */
 .toast {
   position: fixed;
@@ -1530,7 +1619,7 @@ body.staging .media video {
   .rev-split { grid-template-columns: 1fr; }
 }
 
-/* timed-mode banner under hero */
+/* timed-mode banner under hero(舊,保留) */
 .mode-banner {
   text-align: center;
   color: var(--accent);
@@ -1538,6 +1627,132 @@ body.staging .media video {
   font-size: 13px;
   margin: 6px 0 12px;
   text-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* idle 模式選擇卡 — apartment-style,左綠邊 + sharp corners */
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  max-width: 700px;
+  margin: 18px auto 14px;
+}
+@media (max-width: 600px) {
+  .mode-grid { grid-template-columns: 1fr; }
+}
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: linear-gradient(90deg, #111, #0a0a0a);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mode-btn::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--border-2);
+  transition: all 0.18s;
+}
+.mode-btn:hover {
+  background: #181818;
+  color: #fff;
+  border-color: #555;
+  padding-left: 22px;
+  text-shadow: 0 0 6px rgba(255,255,255,0.4);
+}
+.mode-btn:hover::before {
+  background: var(--accent);
+  width: 5px;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.mode-btn.active {
+  background: linear-gradient(90deg, rgba(20,50,20,0.9), rgba(8,20,8,0.9));
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 22px var(--accent-glow), inset 0 0 16px rgba(76,175,80,0.18);
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+.mode-btn.active::before {
+  background: var(--accent);
+  width: 5px;
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+.mode-tag {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  font-feature-settings: "tnum";
+  color: var(--dim);
+  flex: 0 0 auto;
+  transition: color 0.18s;
+}
+.mode-btn:hover .mode-tag,
+.mode-btn.active .mode-tag {
+  color: var(--accent);
+  text-shadow: 0 0 10px var(--accent-glow);
+}
+.mode-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mode-name {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 4px;
+}
+.mode-time {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--dim);
+}
+.mode-btn.active .mode-time { color: var(--accent); opacity: 0.85; }
+
+/* endless 模式 playing 時的「結束本場」按鈕 */
+.endless-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+.btn.end-run-btn {
+  max-width: 260px;
+  background: linear-gradient(90deg, #2a1818, #180a0a);
+  color: var(--red);
+  border-color: var(--red);
+  text-align: center;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+.btn.end-run-btn::before { background: var(--red); width: 4px; box-shadow: 0 0 10px rgba(211,47,47,0.6); }
+.btn.end-run-btn:hover:not(:disabled) {
+  background: linear-gradient(90deg, #4a2020, #200a0a);
+  color: #fff;
+  padding-left: 24px;
+  box-shadow: 0 0 18px rgba(211,47,47,0.5);
+}
+
+/* endless 模式不上全球榜的提示 */
+.endless-lb-note {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--info);
+  background: rgba(41,182,246,0.06);
+  color: var(--text);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  font-style: italic;
 }
 
 /* center primary button under hero */

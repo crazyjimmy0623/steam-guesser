@@ -6,8 +6,8 @@ import { applyI18n, t, T, THEME_OF, LANGS } from './modules/i18n.js';
 import { mountBGM }       from './modules/bgm.js';
 import { mountParticles } from './modules/particles.js';
 import { startTimer }     from './modules/timer.js';
-import { playSFX, playHoverSFX, playPressSFX, playTickSFX } from './modules/sfx.js';
-import { triggerPerfectFx, triggerMissShake, boostCrt, showToast } from './modules/fx.js';
+import { playSFX, playHoverSFX, playPressSFX, playTickSFX, playClockSFX } from './modules/sfx.js';
+import { triggerPerfectFx, triggerMissShake, boostCrt, showToast, triggerTimeUpFx } from './modules/fx.js';
 import { extractAccentColor, applyAccent } from './modules/colorize.js';
 
 // ---------- 設定(從 data/config.json 載入)----------
@@ -22,13 +22,19 @@ const BUCKETS = [
 ];
 const LETTERS = ['A', 'B', 'C', 'D'];
 const SCORE_TABLE = { 0: 100, 1: 50 };
-const TIME_LIMIT = 180;            // 3 分鐘 time attack
+// 兩個遊玩模式 — Timed 3 分鐘倒數,Endless 無時間限制
+const MODES = {
+  timed:   { label: 'TIME ATTACK', labelTc: '計時挑戰', time: 180, icon: '⏱' },
+  endless: { label: 'ENDLESS',     labelTc: '無盡',     time: 0,   icon: '∞' },
+};
+const DEFAULT_MODE = 'timed';
 const HISTORY_CAP = 1000;          // localStorage 歷史記錄上限
 const LEADERBOARD_CAP = 10;        // 本機排行榜 top N
 
 // ---------- state(取代 st.session_state)----------
 const state = {
   lang: 'EN',
+  mode: DEFAULT_MODE,              // sprint/standard/marathon/endless
   phase: 'boot',                   // boot → idle → playing → revealed → ended
   game: null,
   picked: null,
@@ -91,6 +97,13 @@ const storage = {
   loadName: () => localStorage.getItem('sg_player_name') || '',
   saveName: (n) => { try { localStorage.setItem('sg_player_name', String(n).slice(0, 16)); } catch (_) {} },
 
+  // 上次選擇的模式
+  loadMode: () => {
+    const v = localStorage.getItem('sg_mode');
+    return MODES[v] ? v : DEFAULT_MODE;
+  },
+  saveMode: (m) => { try { if (MODES[m]) localStorage.setItem('sg_mode', m); } catch (_) {} },
+
   // 本機排行榜(top N session 分數,跨頁面持久化但限本瀏覽器)
   loadLeaderboard: () => {
     try { return JSON.parse(localStorage.getItem('sg_leaderboard') || '[]'); }
@@ -120,19 +133,19 @@ function scoreFor(picked, actual) {
   return SCORE_TABLE[Math.abs(picked - actual)] ?? 0;
 }
 
-// 完整計分:base + 時間獎金 + 連擊倍率
-// elapsedMs   = 本題從 playing 開始到 click 的毫秒數
-// comboBefore = 進這題前的連擊數
+// 取得當前模式的倒數秒數;endless 回 0
+function currentTimeLimit() {
+  return MODES[state.mode]?.time ?? 0;
+}
+function isEndless() { return state.mode === 'endless'; }
+
+// 計分:base × 連擊倍率(時間獎金已移除,避免鼓勵背題庫的玩法)
+// elapsedMs 仍記錄,給 SPEED_DEMON 成就用,不再加分
 function computeScore(picked, actualIdx, elapsedMs, comboBefore) {
   const base = scoreFor(picked, actualIdx);
   if (base === 0) {
     return { base: 0, bonus: 0, multiplier: 1, final: 0, comboAfter: 0, fast: false };
   }
-  // 時間獎金:< 2s = +50, < 5s = +20,只給 base > 0
-  let bonus = 0;
-  if (elapsedMs < 2000) bonus = 50;
-  else if (elapsedMs < 5000) bonus = 20;
-  const fast = elapsedMs < 2000;
   // 連擊只在 perfect (base=100) 才累加;只要不是 perfect 就清零
   const comboAfter = base === 100 ? comboBefore + 1 : 0;
   // 倍率:只在 perfect 且 combo ≥ 2 啟動
@@ -142,8 +155,8 @@ function computeScore(picked, actualIdx, elapsedMs, comboBefore) {
     else if (comboAfter >= 3) multiplier = 2;
     else if (comboAfter >= 2) multiplier = 1.5;
   }
-  const final = Math.round((base + bonus) * multiplier);
-  return { base, bonus, multiplier, final, comboAfter, fast };
+  const final = Math.round(base * multiplier);
+  return { base, bonus: 0, multiplier, final, comboAfter, fast: elapsedMs < 2000 };
 }
 
 function trailingStreak(hist) {
@@ -206,12 +219,13 @@ function computeAchievements() {
   const lastG = games[games.length - 1];
   if (lastG && lastG.score > 0 && state.session_start_time > 0) {
     // 沒記每題提交時間,我們用「最後一題的 elapsed_ms」估—— 不夠精準,暫且改成 picks > 0 且 session 結束時還剩 < 5s
-    // 實際時機:setPhase('ended') 時 (Date.now()/1000 - session_start) >= TIME_LIMIT - 5
-    // 這場結束時間就是 TIME_LIMIT,reverse:能達標只要最後一題在 TIME_LIMIT-5 之後送出即可
-    // 簡化:看 ended_just_added_ts,session_start_time,差 >= TIME_LIMIT - 5
-    const elapsed = state.ended_just_added_ts - state.session_start_time;
-    if (elapsed >= TIME_LIMIT - 5 && elapsed <= TIME_LIMIT + 1 && lastG.score > 0) {
-      out.push({ key: 'ach_clutch', icon: '⏰' });
+    // CLUTCH 只在計時模式有意義
+    const tl = currentTimeLimit();
+    if (tl > 0) {
+      const elapsed = state.ended_just_added_ts - state.session_start_time;
+      if (elapsed >= tl - 5 && elapsed <= tl + 1 && lastG.score > 0) {
+        out.push({ key: 'ach_clutch', icon: '⏰' });
+      }
     }
   }
 
@@ -526,6 +540,24 @@ function tplLoader(line1, line2) {
 
 function tplIdle() {
   const lang = state.lang;
+  // 兩個模式卡片 — apartment-style,綠色 accent 左邊條
+  const modeBtns = Object.entries(MODES).map(([key, m]) => {
+    const active = key === state.mode ? ' active' : '';
+    const bigLabel = lang === 'EN' ? m.label : m.labelTc;
+    const sub = key === 'timed'
+      ? (lang === 'EN' ? '03:00 · race the clock' : '03:00 · 衝高分')
+      : (lang === 'EN' ? 'no clock · play freely'  : '無時間限制 · 玩到爽');
+    const tag = key === 'timed' ? '[T]' : '[∞]';
+    return `
+      <button class="mode-btn${active}" data-mode="${key}">
+        <span class="mode-tag">${tag}</span>
+        <span class="mode-body">
+          <span class="mode-name">${escapeHtml(bigLabel)}</span>
+          <span class="mode-time">// ${escapeHtml(sub)}</span>
+        </span>
+      </button>
+    `;
+  }).join('');
   return `
     <div class="hero fade-in">
       <div class="icon">◉</div>
@@ -536,7 +568,7 @@ function tplIdle() {
       <p>${escapeHtml(t(lang, 'intro'))}</p>
       <div class="rules">${escapeHtml(t(lang, 'rules'))}</div>
     </div>
-    <div class="mode-banner">⏱ ${escapeHtml(t(lang, 'mode_timed'))} · ${escapeHtml(t(lang, 'time_attack'))}</div>
+    <div class="mode-grid">${modeBtns}</div>
     <div class="primary-row">
       <button class="btn primary" id="btn-start">[ ${escapeHtml(t(lang, 'start'))} ]</button>
     </div>
@@ -629,7 +661,7 @@ function tplGameUpper() {
   `;
 }
 
-// playing 下半段:QUERY + 4 個 bucket 按鈕
+// playing 下半段:QUERY + 4 個 bucket 按鈕(endless 多一個 END RUN)
 function tplPlayingLower() {
   const lang = state.lang;
   const bucketBtns = BUCKETS.map((b, i) => `
@@ -638,6 +670,11 @@ function tplPlayingLower() {
       <span class="kbd-hint">${LETTERS[i]}</span>
     </button>
   `).join('');
+  const endlessBtn = isEndless() ? `
+    <div class="endless-actions">
+      <button class="btn end-run-btn" id="btn-end-run">[ ${escapeHtml(t(lang, 'end_run'))} ]</button>
+    </div>
+  ` : '';
   return `
     <div class="spacer-md"></div>
     <div class="prompt" id="query-prompt">
@@ -646,6 +683,7 @@ function tplPlayingLower() {
     </div>
     <div class="dim-sub">${escapeHtml(t(lang, 'select_prompt'))}</div>
     <div class="bk-buttons">${bucketBtns}</div>
+    ${endlessBtn}
   `;
 }
 
@@ -714,7 +752,8 @@ function tplRevealedLower() {
   }
   const chips = BUCKETS.map((_, i) => chipsByIdx.get(i)).join('');
 
-  const timeUp = state.session_start_time > 0 && (Date.now() / 1000 - state.session_start_time) >= TIME_LIMIT;
+  const tl = currentTimeLimit();
+  const timeUp = !isEndless() && tl > 0 && state.session_start_time > 0 && (Date.now() / 1000 - state.session_start_time) >= tl;
   const nextLabel = timeUp ? t(lang, 'view_results') : t(lang, 'next');
 
   return `
@@ -839,9 +878,11 @@ function tplEnded() {
         : `<div class="lb-loading">—</div>`;
     }
 
-    // submit 表單 / 已送出狀態
+    // submit 表單 / 已送出狀態 — endless 模式不上全球榜(避免不公平)
     let submitHtml = '';
-    if (state.session_picks > 0) {
+    if (isEndless()) {
+      submitHtml = `<div class="endless-lb-note">${escapeHtml(t(lang, 'endless_no_lb'))}</div>`;
+    } else if (state.session_picks > 0) {
       if (state.lb_submitted) {
         submitHtml = `
           <div class="submit-done">
@@ -1143,6 +1184,15 @@ function bindPhaseEvents() {
     btn.addEventListener('click', () => onClickBucket(parseInt(btn.dataset.bucket, 10)));
   }
 
+  // 模式選擇(idle 上)
+  for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
+    btn.addEventListener('click', () => onClickMode(btn.dataset.mode));
+  }
+
+  // 結束本場(endless 模式 playing 時)
+  const btnEndRun = document.getElementById('btn-end-run');
+  if (btnEndRun) btnEndRun.addEventListener('click', onClickEndRun);
+
   const submitForm = document.getElementById('lb-submit');
   if (submitForm) {
     submitForm.addEventListener('submit', (e) => {
@@ -1169,7 +1219,8 @@ async function onClickStart() {
 
 async function onClickNext() {
   if (inTransition) return;
-  const timeUp = state.session_start_time > 0 && (Date.now() / 1000 - state.session_start_time) >= TIME_LIMIT;
+  const tl = currentTimeLimit();
+  const timeUp = !isEndless() && tl > 0 && state.session_start_time > 0 && (Date.now() / 1000 - state.session_start_time) >= tl;
   if (timeUp) {
     setPhase('ended');
     return;
@@ -1236,6 +1287,23 @@ function onClickBucket(idx) {
   requestAnimationFrame(() => playSFX(sc.base));
 }
 
+function onClickMode(mode) {
+  if (!MODES[mode] || mode === state.mode) return;
+  state.mode = mode;
+  storage.saveMode(mode);
+  // 只重 render 模式按鈕高亮,不影響其他內容
+  for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  }
+}
+
+function onClickEndRun() {
+  if (state.phase !== 'playing' || !isEndless()) return;
+  // 玩家主動結束 endless,直接觸發 ended(同 timer onExpire 的視覺特效)
+  document.body.classList.remove('staging');
+  triggerTimeUpFx(state.lang === 'EN' ? 'RUN ENDED' : '結束本場', () => setPhase('ended'));
+}
+
 function onClickAgain() {
   state.session_start_time = 0;
   state.session_score = 0;
@@ -1254,6 +1322,8 @@ function onClickAgain() {
 
 // ---------- timer 啟動/管理 ----------
 function ensureTimerRunning() {
+  // endless 模式不啟動 timer
+  if (isEndless()) return;
   if (stopTimerFn) return;
   const container = document.getElementById('timer-widget');
   stopTimerFn = startTimer({
@@ -1261,18 +1331,23 @@ function ensureTimerRunning() {
     getStartTime: () => state.session_start_time,
     getScore:     () => state.session_score,
     getPhase:     () => state.phase,
-    getTimeLimit: () => TIME_LIMIT,
+    getTimeLimit: () => currentTimeLimit(),
     getLabel:      () => t(state.lang, 'time_left'),
     getScoreLabel: () => t(state.lang, 'session_score'),
     onExpire: () => {
-      // 在 playing 階段時間到 → 直接結算;
-      // 在 revealed 階段時間到 → 等使用者按 view results(button label 會自動換)
-      if (state.phase === 'playing') setPhase('ended');
+      // 不論 playing 或 revealed,時間到立刻播全螢幕「TIME UP」紅幕 + 警報音,
+      // 1.5 秒後自動切到結算 phase
+      if (state.phase === 'ended') return;
+      triggerTimeUpFx('TIME UP', () => setPhase('ended'));
     },
-    // 心跳:最後 15 秒每秒一聲,最後 5 秒加重
+    // 倒數音效分三階段:
+    //   30s..16s:時鐘秒針(高頻 click)
+    //   15s..6s :心跳低頻 thump
+    //    5s..1s :加重雙聲咚-咚(intensity 1.5 觸發 sub-bass 後音)
     onTick: (sec) => {
-      const intensity = sec <= 5 ? 1.5 : 1.0;
-      playTickSFX(intensity);
+      if (sec >= 16) playClockSFX();
+      else if (sec >= 6) playTickSFX(1.0);
+      else playTickSFX(1.5);
     },
   });
 }
@@ -1403,6 +1478,7 @@ function setupLangSwitch() {
 async function boot() {
   try {
     state.lang = storage.loadLang();
+    state.mode = storage.loadMode();
     state.session_best = storage.loadBest();
     state.player_name = storage.loadName();
     rebuildHistStats();

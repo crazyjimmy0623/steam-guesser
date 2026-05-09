@@ -27,8 +27,9 @@
 const TOP_CAP = 100;
 const RATE_TTL_SEC = 60;
 const MAX_NAME_LEN = 16;
-const MAX_PICKS = 30;
-const MAX_SCORE = 2000;
+const MAX_PICKS = 50;                 // 5 分鐘最快情況的合理上限
+const MAX_PER_PICK = 500;             // base 100 + fast bonus 50 + ×3 combo = 450,留 buffer
+const MAX_SCORE = MAX_PICKS * MAX_PER_PICK;   // 25000
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -87,11 +88,16 @@ async function submit(request, env) {
   const nears    = toInt(body.nears);
   const misses   = toInt(body.misses);
 
-  if (score < 0 || score > MAX_SCORE)        return jsonError('invalid_score', 400);
-  if (picks < 1 || picks > MAX_PICKS)         return jsonError('invalid_picks', 400);
+  if (score < 0 || score > MAX_SCORE)         return jsonError('invalid_score', 400);
+  if (picks < 1 || picks > MAX_PICKS)          return jsonError('invalid_picks', 400);
   if (perfects < 0 || nears < 0 || misses < 0) return jsonError('invalid_counts', 400);
-  if (perfects + nears + misses !== picks)    return jsonError('counts_mismatch', 400);
-  if (score !== perfects * 100 + nears * 50)  return jsonError('score_mismatch', 400);
+  if (perfects + nears + misses !== picks)     return jsonError('counts_mismatch', 400);
+  // 前端有時間獎金 + 連擊倍率 → score 區間 [base_min, picks*MAX_PER_PICK]
+  // base_min = perfects*100 + nears*50 (最低,沒任何 bonus / 沒倍率)
+  // 上限給 picks * 500,允許所有 bonus + ×3 combo
+  const baseMin = perfects * 100 + nears * 50;
+  if (score < baseMin)                         return jsonError('score_too_low', 400);
+  if (score > picks * MAX_PER_PICK)            return jsonError('score_too_high', 400);
 
   // 3. assemble entry
   const entry = {

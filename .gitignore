@@ -2,10 +2,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-history.json
-pool.json
-best.json
-.streamlit/
 .claude/
 
 # 靜態網站開發

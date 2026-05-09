@@ -82,6 +82,38 @@ export function playHoverSFX() {
   } catch (e) { /* 靜默 */ }
 }
 
+// ---------- 倒數時鐘 tick — 高頻短促 click,模擬機械秒針 ----------
+export function playClockSFX() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    // 高頻噪音 burst,bandpass 在 2.5kHz,給乾淨的「ㄉㄚ」秒針聲
+    const dur = 0.025;
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      // 衰減包絡讓 noise 像 click 而非 hiss
+      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 2400;
+    bp.Q.value = 4;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.07, now + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+    noise.connect(bp); bp.connect(g); g.connect(ctx.destination);
+    noise.start(now);
+  } catch (e) { /* 靜默 */ }
+}
+
 // ---------- 倒數心跳 tick — 短促低頻 thump,intensity 控制音量 ----------
 export function playTickSFX(intensity = 1) {
   const ctx = getCtx();
