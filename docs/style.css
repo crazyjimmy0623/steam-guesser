@@ -652,6 +652,124 @@ body.staging .media video {
   filter: brightness(0.9) contrast(1.05);
 }
 
+/* zoomable img — 滑鼠變放大鏡,hover 邊框點亮 */
+.media img.zoomable,
+.shots img.zoomable {
+  cursor: zoom-in;
+  transition: border-color 0.18s, filter 0.18s, transform 0.18s;
+}
+.media img.zoomable:hover,
+.shots img.zoomable:hover {
+  border-color: var(--accent);
+  filter: brightness(1.05) contrast(1.05);
+}
+.shots img.zoomable:hover { transform: scale(1.02); }
+
+/* 影片 controls — autoplay loop muted 維持 ambient,但 hover 出現 scrub bar */
+.media video {
+  cursor: pointer;
+}
+/* 預設不顯眼,hover 才浮現,避免破壞 cyberpunk 氛圍 */
+.media video::-webkit-media-controls-panel {
+  background: rgba(0,0,0,0.5);
+}
+
+/* ---------- 圖片 lightbox ---------- */
+.lightbox {
+  position: fixed; inset: 0;
+  z-index: 10003;
+  background: rgba(0,0,0,0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  animation: lbIn 0.2s ease-out;
+  backdrop-filter: blur(6px);
+}
+.lightbox.out { animation: lbOut 0.22s ease-in forwards; }
+@keyframes lbIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lbOut { to { opacity: 0; } }
+
+.lightbox-img {
+  max-width: 92vw;
+  max-height: 88vh;
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 60px var(--accent-glow), 0 0 120px rgba(76,175,80,0.25);
+  cursor: default;
+  animation: lbImgIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes lbImgIn {
+  0%   { opacity: 0; transform: scale(0.85); filter: blur(8px); }
+  100% { opacity: 1; transform: scale(1);    filter: blur(0); }
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 18px; right: 22px;
+  width: 42px; height: 42px;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 26px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0;
+  font-family: inherit;
+  transition: all 0.18s;
+  text-shadow: 0 0 10px var(--accent-glow);
+}
+.lightbox-close:hover {
+  background: var(--accent);
+  color: #000;
+  text-shadow: none;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56px; height: 80px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid var(--border-2);
+  color: var(--accent);
+  font-size: 32px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  text-shadow: 0 0 10px var(--accent-glow);
+  transition: all 0.18s;
+}
+.lightbox-nav:hover {
+  background: rgba(76,175,80,0.2);
+  border-color: var(--accent);
+  box-shadow: 0 0 18px var(--accent-glow);
+}
+.lightbox-prev { left: 16px; }
+.lightbox-next { right: 16px; }
+
+.lightbox-counter {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  background: rgba(8,8,10,0.85);
+  border: 1px solid var(--border-2);
+  border-left: 3px solid var(--accent);
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 3px;
+  font-feature-settings: "tnum";
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+@media (max-width: 600px) {
+  .lightbox-nav { width: 44px; height: 64px; font-size: 26px; }
+  .lightbox-prev { left: 8px; }
+  .lightbox-next { right: 8px; }
+}
+
 /* ---------- metadata ---------- */
 .target-title {
   font-size: 22px; font-weight: 800;

@@ -200,6 +200,54 @@ function escapeHtml(s) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// ---------- 圖片 lightbox(點圖片開大)----------
+let lightboxKeyHandler = null;
+function openLightbox(srcs, startIdx = 0) {
+  if (!srcs || !srcs.length) return;
+  let idx = startIdx;
+  const lb = document.createElement('div');
+  lb.className = 'lightbox';
+  lb.innerHTML = `
+    <img class="lightbox-img" src="${escapeHtml(srcs[idx])}" alt="">
+    <button class="lightbox-close" type="button" aria-label="close">×</button>
+    ${srcs.length > 1 ? `
+      <button class="lightbox-nav lightbox-prev" type="button" aria-label="prev">‹</button>
+      <button class="lightbox-nav lightbox-next" type="button" aria-label="next">›</button>
+      <div class="lightbox-counter">${idx + 1} / ${srcs.length}</div>
+    ` : ''}
+  `;
+  document.body.appendChild(lb);
+  const imgEl = lb.querySelector('.lightbox-img');
+  const counterEl = lb.querySelector('.lightbox-counter');
+  const update = () => {
+    imgEl.src = srcs[idx];
+    if (counterEl) counterEl.textContent = `${idx + 1} / ${srcs.length}`;
+  };
+  const next = () => { idx = (idx + 1) % srcs.length; update(); };
+  const prev = () => { idx = (idx - 1 + srcs.length) % srcs.length; update(); };
+  const close = () => {
+    lb.classList.add('out');
+    setTimeout(() => lb.remove(), 220);
+    if (lightboxKeyHandler) document.removeEventListener('keydown', lightboxKeyHandler);
+    lightboxKeyHandler = null;
+  };
+  lightboxKeyHandler = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft')  { e.preventDefault(); prev(); }
+  };
+  document.addEventListener('keydown', lightboxKeyHandler);
+  lb.addEventListener('click', (e) => {
+    // 只有點到背景(不是圖、不是按鈕)才關
+    if (e.target === lb) close();
+  });
+  lb.querySelector('.lightbox-close').addEventListener('click', close);
+  const pBtn = lb.querySelector('.lightbox-prev');
+  const nBtn = lb.querySelector('.lightbox-next');
+  if (pBtn) pBtn.addEventListener('click', (e) => { e.stopPropagation(); prev(); });
+  if (nBtn) nBtn.addEventListener('click', (e) => { e.stopPropagation(); next(); });
+}
+
 // 計算本場解鎖的成就(只看 session 內統計)
 function computeAchievements() {
   const games = state.session_games;
@@ -635,11 +683,14 @@ function tplGameUpper() {
 
   let mediaHtml = '';
   if (g.trailer_url) {
-    mediaHtml = `<video class="hero-media" src="${escapeHtml(g.trailer_url)}" autoplay loop muted playsinline></video>`;
+    // controls 讓 hover 出現進度條 / 暫停 / 全螢幕;loop+autoplay+muted 維持 ambient 體驗
+    mediaHtml = `<video class="hero-media" src="${escapeHtml(g.trailer_url)}" autoplay loop muted playsinline controls preload="metadata"></video>`;
   } else if (g.header_image) {
-    mediaHtml = `<img class="hero-media" src="${escapeHtml(g.header_image)}" alt="">`;
+    mediaHtml = `<img class="hero-media zoomable" src="${escapeHtml(g.header_image)}" alt="">`;
   }
-  const shotsHtml = (g.screenshots || []).slice(0, 3).map(s => `<img src="${escapeHtml(s)}" alt="">`).join('');
+  // 截圖:加 .zoomable + index,點下去開 lightbox 可左右鍵切
+  const shots = (g.screenshots || []).slice(0, 3);
+  const shotsHtml = shots.map((s, i) => `<img class="zoomable" data-shot-idx="${i}" src="${escapeHtml(s)}" alt="">`).join('');
 
   return `
     <div class="split">
@@ -1204,6 +1255,20 @@ function bindPhaseEvents() {
       submitGlobalLb(name);
     });
   }
+
+  // 圖片放大 lightbox(影片有自己 controls,不在這邊接)
+  const mainImg = document.querySelector('.media img.zoomable');
+  const shotImgs = Array.from(document.querySelectorAll('.shots img.zoomable'));
+  const shotSrcs = shotImgs.map(i => i.src);
+  if (mainImg) {
+    mainImg.addEventListener('click', () => openLightbox([mainImg.src, ...shotSrcs], 0));
+  }
+  shotImgs.forEach((img, i) => {
+    img.addEventListener('click', () => {
+      const arr = mainImg ? [mainImg.src, ...shotSrcs] : shotSrcs;
+      openLightbox(arr, mainImg ? i + 1 : i);
+    });
+  });
 }
 
 // ---------- 事件 handlers ----------
