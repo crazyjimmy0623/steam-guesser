@@ -683,8 +683,11 @@ function tplGameUpper() {
 
   let mediaHtml = '';
   if (g.trailer_url) {
-    // controls 讓 hover 出現進度條 / 暫停 / 全螢幕;loop+autoplay+muted 維持 ambient 體驗
-    mediaHtml = `<video class="hero-media" src="${escapeHtml(g.trailer_url)}" autoplay loop muted playsinline controls preload="metadata"></video>`;
+    // poster:trailer 載入中 / 失敗時顯示 header 圖,不會黑屏
+    // controls:hover 出現進度條 / 暫停 / 全螢幕
+    // loop+autoplay+muted:維持 ambient 體驗
+    const poster = g.header_image ? ` poster="${escapeHtml(g.header_image)}"` : '';
+    mediaHtml = `<video class="hero-media"${poster} src="${escapeHtml(g.trailer_url)}" autoplay loop muted playsinline controls preload="metadata"></video>`;
   } else if (g.header_image) {
     mediaHtml = `<img class="hero-media zoomable" src="${escapeHtml(g.header_image)}" alt="">`;
   }
@@ -1130,10 +1133,13 @@ function renderInner() {
 
   // 進到 playing/revealed 時 scroll 到結果區 + 觸發數字計數動畫
   if (state.phase === 'playing') {
-    requestAnimationFrame(() => {
+    // 多次 scroll:剛 render 立刻拉一次,之後等媒體/截圖載入時 layout 會長,再校正幾次
+    const doScroll = () => {
       const q = document.getElementById('query-prompt');
       if (q) q.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    };
+    requestAnimationFrame(doScroll);
+    [400, 1000, 1800, 2800].forEach(d => setTimeout(doScroll, d));
   } else if (state.phase === 'revealed') {
     requestAnimationFrame(() => {
       const verdict = v.querySelector('.verdict');

@@ -7,7 +7,7 @@ export function mountBGM(container) {
     <div class="bgm" id="bgm">
       <span>BGM</span>
       <button id="bgm-toggle">◉ ON</button>
-      <input id="bgm-vol" type="range" min="0" max="100" value="100" />
+      <input id="bgm-vol" type="range" min="0" max="100" value="30" />
     </div>
   `;
   const toggleBtn = container.querySelector('#bgm-toggle');

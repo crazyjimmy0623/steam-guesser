@@ -493,20 +493,43 @@ body.staging .meta .row:nth-child(2) { animation-delay: 1.58s; }
 body.staging .meta .row:nth-child(3) { animation-delay: 1.71s; }
 body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
 
-/* ---------- bucket buttons (staggered fade-up) ---------- */
+/* ---------- 答題區依序揭曉:QUERY → 提示 → A → B → C → D ----------
+   playing phase 進場時每個元素往後延遲一點,有「呈現選項」儀式感 */
 .bk-buttons {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  margin: 12px 0;
+  gap: 8px;
+  margin: 14px 0 18px;
 }
 .bk-buttons > .btn {
-  animation: btnIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* 放大版 bucket 按鈕 */
+  padding: 22px 22px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  position: relative;
+  animation: btnIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.bk-buttons > .btn:nth-child(1) { animation-delay: 0.05s; }
-.bk-buttons > .btn:nth-child(2) { animation-delay: 0.12s; }
-.bk-buttons > .btn:nth-child(3) { animation-delay: 0.19s; }
-.bk-buttons > .btn:nth-child(4) { animation-delay: 0.26s; }
+.bk-buttons > .btn:nth-child(1) { animation-delay: 0.55s; }
+.bk-buttons > .btn:nth-child(2) { animation-delay: 0.75s; }
+.bk-buttons > .btn:nth-child(3) { animation-delay: 0.95s; }
+.bk-buttons > .btn:nth-child(4) { animation-delay: 1.15s; }
+.bk-buttons > .btn:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 6px 22px rgba(76,175,80,0.22);
+}
+.bk-buttons > .btn:hover:not(:disabled)::before {
+  width: 8px;
+  box-shadow: 0 0 18px var(--accent-glow);
+}
+/* QUERY prompt + 「選擇評論區間」提示也加各自的延遲 */
+.prompt#query-prompt {
+  animation: slideInLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+  font-size: 15px;
+}
+.dim-sub {
+  animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
+}
 
 /* 鍵盤快捷鍵小提示 — 顯示在 bucket 按鈕右側 */
 .bk-btn { position: relative; }
@@ -631,14 +654,23 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
   border: 1px solid var(--border-2);
   filter: brightness(0.9) contrast(1.05);
 }
-body.staging .media img,
-body.staging .media video {
-  animation: imgIn 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.7s both;
+/* 媒體進場動畫 — 拿掉 body.staging gating;媒體只在「換新題」時 render,
+   不會跟前次重疊,所以可以無條件套用,確保每場都看得到位移淡入 */
+.media img,
+.media video {
+  animation: imgIn 1s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
 }
 @keyframes imgIn {
-  from { opacity: 0; filter: blur(14px) brightness(0.4); transform: translateY(36px) scale(1.04); }
-  to   { opacity: 1; filter: blur(0)    brightness(0.9); transform: translateY(0)    scale(1); }
+  from { opacity: 0; filter: blur(18px) brightness(0.35); transform: translateY(48px) scale(1.05); }
+  to   { opacity: 1; filter: blur(0)    brightness(0.9);  transform: translateY(0)    scale(1); }
 }
+/* 截圖也跟著一起依序滑入 */
+.shots img {
+  animation: imgIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.shots img:nth-child(1) { animation-delay: 1.2s; }
+.shots img:nth-child(2) { animation-delay: 1.35s; }
+.shots img:nth-child(3) { animation-delay: 1.5s; }
 .shots {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
