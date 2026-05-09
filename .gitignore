@@ -7,3 +7,6 @@ venv/
 # 靜態網站開發
 .build_cache/
 docs/data/games.dev.json
+
+# Cloudflare wrangler 本機 cache(account id / email,不該進 repo)
+.wrangler/
