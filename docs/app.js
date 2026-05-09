@@ -625,6 +625,7 @@ function tplIdle() {
       ${cta('endless', 'endless')}
     </div>
     ${tplHistoryExpander()}
+    <div class="disclaimer">${escapeHtml(t(lang, 'site_disclaimer'))}</div>
   `;
 }
 
@@ -958,6 +959,7 @@ function tplEnded() {
         submitHtml = `
           <div class="submit-row">
             <div class="submit-label">${escapeHtml(t(lang, 'submit_prompt'))}</div>
+            <div class="submit-privacy">${escapeHtml(t(lang, 'submit_privacy'))}</div>
             <form id="lb-submit" class="submit-form">
               <input id="lb-name" type="text" maxlength="16" minlength="1"
                      placeholder="${escapeHtml(t(lang, 'name_placeholder'))}"

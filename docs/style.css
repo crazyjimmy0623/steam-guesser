@@ -2104,6 +2104,27 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
 .center { text-align: center; }
 .dim-sub { color: var(--dim); font-size: 12px; letter-spacing: 1px; margin: 6px 0 12px; }
 
+/* idle 頁底部 disclaimer 灰字一行(很低調,不喧賓奪主)*/
+.disclaimer {
+  text-align: center;
+  margin: 28px auto 6px;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--dimmer);
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* submit 表單下方 privacy 一行 */
+.submit-privacy {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--dim);
+  margin: -4px 0 8px;
+  font-style: italic;
+  opacity: 0.85;
+}
+
 /* ========== Mobile / 平板 (<= 600px) ========== */
 @media (max-width: 600px) {
   .app { padding: 0.4rem 0.6rem 4rem; }

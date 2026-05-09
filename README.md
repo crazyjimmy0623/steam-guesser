@@ -1,5 +1,7 @@
 # steam-guesser
 
+> [English](README.en.md) · 繁中
+
 看遊戲畫面、影片、metadata,猜 Steam 評論數落在哪個區間。
 
 ## Play
@@ -104,3 +106,23 @@ python -m http.server 8080
 - 過濾條件:評論數 `[10, 50000]`(對齊 [steamle.com](https://steamle.com/) 的桶區間)
 
 玩家本機資料(歷史、最佳、模式偏好、玩家暱稱)存 localStorage(`sg_history` / `sg_best` / `sg_mode` / `sg_player_name` 等)。
+
+## License
+
+[MIT](LICENSE) © 2026 crazyjimmy0623
+
+## 免責聲明 / Disclaimer
+
+Steam Review Guesser 是粉絲自製的猜謎遊戲,**與 Valve Corporation 無任何官方關聯、合作、授權或贊助**。
+"Steam" 與 Steam logo 是 Valve 的註冊商標。
+
+遊戲名稱、描述、價格、發售日、類型、開發商、header 圖、截圖與 trailer 影片均透過
+[Steam Web API](https://store.steampowered.com/api) 與 [SteamSpy](https://steamspy.com)
+公開取得,版權歸各遊戲發行商與 Steam 所有,本專案僅作教育/娛樂目的展示,並把每筆連回對應的
+Steam 商店頁。
+
+### 隱私
+
+全球排行榜送出時,Cloudflare Worker KV 儲存:**你自選的暱稱(1-16 字元)+ 分數 + 時間戳記**。
+不收 email、IP、cookie 或瀏覽器資料(IP 僅短暫用於 60 秒 rate limit,不持久化儲存)。
+本機統計(歷史、最佳分數、模式偏好、玩家暱稱)僅存在你瀏覽器的 localStorage,不上傳。
