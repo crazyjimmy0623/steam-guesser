@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    timeout-minutes: 90
+    timeout-minutes: 180   # 3 小時 buffer;實際 fresh build ~70-90 min, incremental ~10 min
     steps:
       - uses: actions/checkout@v4
         with:
