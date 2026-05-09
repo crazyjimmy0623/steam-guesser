@@ -659,6 +659,8 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
 .media img,
 .media video {
   animation: imgIn 1s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
+  max-height: 380px;
+  object-fit: cover;
 }
 @keyframes imgIn {
   from { opacity: 0; filter: blur(18px) brightness(0.35); transform: translateY(48px) scale(1.05); }
@@ -2099,3 +2101,157 @@ body.staging .meta .row:nth-child(4) { animation-delay: 1.84s; }
 .spacer-md { height: 18px; }
 .center { text-align: center; }
 .dim-sub { color: var(--dim); font-size: 12px; letter-spacing: 1px; margin: 6px 0 12px; }
+
+/* ========== Mobile / 平板 (<= 600px) ========== */
+@media (max-width: 600px) {
+  .app { padding: 0.4rem 0.6rem 4rem; }
+
+  /* HUD 縮小 */
+  .hud {
+    padding: 8px 12px;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .hud .brand { font-size: 11px; gap: 6px; }
+  .hud .brand .blink { width: 5px; height: 5px; }
+  .hud .stats { gap: 12px; }
+  .hud .stat { font-size: 10px; gap: 4px; }
+  .hud .stat b { font-size: 13px; }
+  .lang-switch button {
+    padding: 6px 12px;
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  /* Hero 字體縮小 */
+  .hero {
+    padding: 30px 16px 20px;
+    margin: 18px auto;
+  }
+  .hero-title {
+    font-size: 28px;
+    letter-spacing: 4px;
+  }
+  .hero-tagline { font-size: 11px; letter-spacing: 1.5px; }
+  .hero-status { font-size: 14px; letter-spacing: 1.5px; }
+  .hero p { font-size: 12px; }
+  .hero .rules { font-size: 11px; }
+
+  /* CTA 卡片縮小 padding(.cta-grid 已在 main 區設成單欄) */
+  .cta-card { padding: 16px 18px; }
+  .cta-tag { font-size: 22px; }
+  .cta-name { font-size: 15px; letter-spacing: 3px; }
+  .cta-action { font-size: 13px; letter-spacing: 2px; padding-top: 10px; }
+
+  /* 媒體最高高度,避免長手機影片頂半個螢幕 */
+  .media img,
+  .media video { max-height: 240px; }
+  .shots { gap: 3px; }
+
+  /* metadata 字體縮 */
+  .target-title { font-size: 17px; }
+  .target-desc  { font-size: 12px; line-height: 1.55; }
+  .meta { font-size: 12px; gap: 4px 10px; }
+
+  /* QUERY prompt + bucket 按鈕(維持 4 欄,字 + padding 縮小)*/
+  .prompt#query-prompt { font-size: 13px; }
+  .bk-buttons { gap: 4px; }
+  .bk-buttons > .btn {
+    padding: 16px 8px;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+  }
+  .kbd-hint {
+    top: 3px; right: 4px;
+    padding: 0 4px;
+    font-size: 9px;
+  }
+
+  /* Verdict / score 縮放 */
+  .verdict { font-size: 17px; letter-spacing: 3px; padding: 11px 14px; }
+  .verdict.verdict-combo { font-size: 19px; }
+  .verdict.verdict-rampage { font-size: 23px; letter-spacing: 5px; }
+  .score .num { font-size: 50px; }
+  .breakdown { font-size: 10px; gap: 6px; }
+  .breakdown > span { padding: 2px 6px; }
+
+  /* Time-up 大字縮放 */
+  .timeup-glitch { font-size: 56px; letter-spacing: 6px; }
+  .timeup-tag { font-size: 11px; letter-spacing: 4px; margin-top: 16px; }
+
+  /* Ended 結算頁 */
+  .ended-score-num { font-size: 64px; }
+  .ended-tag { font-size: 13px; letter-spacing: 5px; }
+  .achievements .ach-grid { grid-template-columns: 1fr; }
+  .session-games ul { grid-template-columns: 1fr; }
+  .leaderboard li,
+  .lb-global-list li { font-size: 11px; padding: 6px 6px; }
+
+  /* Signature + BGM/SFX widgets 在右下/左下避免重疊 */
+  .signature {
+    bottom: 6px; left: 6px;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    padding: 4px 10px;
+    gap: 4px;
+  }
+  #bgm-widget {
+    bottom: 6px; right: 6px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .bgm, .sfx-widget {
+    padding: 4px 8px;
+    font-size: 10px;
+    gap: 6px;
+  }
+  .bgm button, .sfx-widget button {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+  .bgm input[type="range"] { width: 60px; }
+
+  /* Submit form 在小螢幕直立 */
+  .submit-form { flex-direction: column; }
+  .submit-btn { width: 100%; }
+}
+
+/* ========== 超小螢幕 (<= 400px),把 4 桶 改成 2x2 比較好按 ========== */
+@media (max-width: 400px) {
+  .hero-title { font-size: 24px; letter-spacing: 3px; }
+  .bk-buttons {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .bk-buttons > .btn {
+    padding: 18px 14px;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+  /* 2x2 reading order: A B 在上,C D 在下,delay 一致改 */
+  .bk-buttons > .btn:nth-child(1) { animation-delay: 0.55s; }
+  .bk-buttons > .btn:nth-child(2) { animation-delay: 0.70s; }
+  .bk-buttons > .btn:nth-child(3) { animation-delay: 0.85s; }
+  .bk-buttons > .btn:nth-child(4) { animation-delay: 1.00s; }
+}
+
+/* ========== Touch 裝置(沒有 hover) — 強化 active state 補償 ========== */
+@media (hover: none) {
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+    background: rgba(76,175,80,0.15);
+  }
+  .bk-buttons > .btn:active:not(:disabled) {
+    border-color: var(--accent);
+    box-shadow: 0 0 18px var(--accent-glow);
+  }
+  .cta-card:active:not(:disabled) {
+    transform: scale(0.97);
+    filter: brightness(1.2);
+  }
+  /* 不顯示 keyboard hint(touch 用不到)*/
+  .kbd-hint { display: none; }
+  /* 圖片 hover 變色用 active 替代 */
+  .shots img.zoomable:active { transform: scale(0.97); border-color: var(--accent); }
+}
