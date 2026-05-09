@@ -34,6 +34,19 @@ jobs:
       - name: build games.json
         run: python scripts/build_pool.py
 
+      # build 期間 master 可能被人推新 commit → push 前重新 rebase 一次。
+      # 失敗也保留 games.json 當 artifact,下次失敗才不會 0 收穫。
+      - name: upload games.json as artifact (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: games-json-${{ github.run_id }}
+          path: |
+            docs/data/games.json
+            docs/data/version.txt
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: commit & push if changed
         env:
           GIT_AUTHOR_NAME: github-actions[bot]
@@ -44,7 +57,22 @@ jobs:
           git add docs/data/games.json docs/data/version.txt
           if git diff --cached --quiet; then
             echo "no changes — skip commit"
-          else
-            git commit -m "data: weekly pool rebuild $(date -u +%F)"
-            git push
+            exit 0
           fi
+          git commit -m "data: weekly pool rebuild $(date -u +%F)"
+          # 用 rebase + retry 處理「build 期間有人 push」的競態
+          for attempt in 1 2 3; do
+            git fetch origin master
+            if git rebase origin/master; then
+              if git push origin master; then
+                echo "pushed on attempt $attempt"
+                exit 0
+              fi
+            else
+              echo "rebase conflict on attempt $attempt — abort & retry"
+              git rebase --abort || true
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "::error::failed to push after 3 attempts (race or conflict). games.json saved as artifact."
+          exit 1
