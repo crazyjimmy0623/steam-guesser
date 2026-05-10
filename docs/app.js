@@ -1135,13 +1135,26 @@ function renderInner() {
 
   // 進到 playing/revealed 時 scroll 到結果區 + 觸發數字計數動畫
   if (state.phase === 'playing') {
-    // 多次 scroll:剛 render 立刻拉一次,之後等媒體/截圖載入時 layout 會長,再校正幾次
+    // 多次 scroll:剛 render 立刻拉一次,之後等媒體/截圖載入 layout 會長再校正幾次。
+    // 但只要使用者主動操作(wheel / touchmove / keydown),立刻取消後續 auto-scroll,
+    // 不然他想往上滑看看其他細節,我們會一直把他拉回來。
+    let userScrolled = false;
+    const ctrl = new AbortController();
+    const markScrolled = () => { userScrolled = true; ctrl.abort(); };
+    const opts = { signal: ctrl.signal, passive: true };
+    window.addEventListener('wheel',     markScrolled, opts);
+    window.addEventListener('touchmove', markScrolled, opts);
+    window.addEventListener('keydown',   markScrolled, { signal: ctrl.signal });
+
     const doScroll = () => {
+      if (userScrolled) return;
       const q = document.getElementById('query-prompt');
       if (q) q.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     requestAnimationFrame(doScroll);
     [400, 1000, 1800, 2800].forEach(d => setTimeout(doScroll, d));
+    // 3.5 秒後沒事就清掉 listener,避免累積
+    setTimeout(() => ctrl.abort(), 3500);
   } else if (state.phase === 'revealed') {
     requestAnimationFrame(() => {
       const verdict = v.querySelector('.verdict');
