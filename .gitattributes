@@ -1,0 +1,3 @@
+# 讓 GitHub Linguist 把 JavaScript 顯示為主語言。
+# style.css 是純視覺樣式,不代表專案的核心邏輯,從語言統計排除。
+docs/style.css linguist-detectable=false
